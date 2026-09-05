@@ -1,0 +1,62 @@
+{
+  "name": "onionsure-backend",
+  "version": "1.0.0",
+  "description": "OnionSure — AI + IoT + Computer Vision onion quality assessment & digital certification backend",
+  "main": "dist/server.js",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only --exit-child src/server.ts",
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "prisma:studio": "prisma studio",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "@types/compression": "^1.8.1",
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.3.0",
+    "pino": "^9.4.0",
+    "pino-http": "^10.3.0",
+    "swagger-ui-express": "^5.0.1",
+    "ws": "^8.18.0",
+    "yamljs": "^0.3.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^20.16.11",
+    "@types/supertest": "^6.0.2",
+    "@types/swagger-ui-express": "^4.1.6",
+    "@types/ws": "^8.5.12",
+    "prisma": "^5.22.0",
+    "supertest": "^7.0.0",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.3"
+  }
+}

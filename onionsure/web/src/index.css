@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --shadow-soft: 0 1px 2px rgba(20, 20, 25, 0.04), 0 8px 24px rgba(20, 20, 25, 0.05);
+  --shadow-card: 0 1px 2px rgba(20, 20, 25, 0.04), 0 12px 32px rgba(20, 20, 25, 0.06);
+}
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: #F7F7F5;
+  color: #17161D;
+  font-family: 'Inter', 'SF Pro Display', 'Manrope', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv11", "ss01", "ss03";
+}
+
+@layer components {
+  /* Legacy OnionSure classes (keep for backward compat) */
+  .glass {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+  }
+  .card {
+    @apply bg-surface rounded-2xl shadow-soft border border-border;
+  }
+  .card-legacy {
+    @apply bg-white rounded-2xl border border-emerald-50;
+    box-shadow: 0 4px 20px -8px rgba(6,69,44,0.18);
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-forest text-white px-5 py-2.5 font-semibold transition hover:bg-darkgreen;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-5 py-2.5 font-semibold text-forest transition hover:bg-emerald-50;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold;
+  }
+  .input {
+    @apply w-full rounded-xl border border-border bg-white px-4 py-2.5 text-sm outline-none focus:border-sb-500 focus:ring-2 focus:ring-sb-100;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-semibold text-ink;
+  }
+
+  /* iBank design system */
+  .card-dark {
+    background: linear-gradient(135deg, #111019 0%, #1A1822 100%);
+    color: #fff;
+    @apply rounded-xl2;
+    box-shadow: var(--shadow-card);
+  }
+  .card-pastel-mint    { @apply rounded-xl2; background: linear-gradient(180deg, #DDF5E8 0%, #BFE8CF 100%); border: 1px solid rgba(20,20,25,0.04); box-shadow: var(--shadow-soft); }
+  .card-pastel-peach   { @apply rounded-xl2; background: linear-gradient(180deg, #F9E9DD 0%, #F5DCCB 100%); border: 1px solid rgba(20,20,25,0.04); box-shadow: var(--shadow-soft); }
+  .card-pastel-blue    { @apply rounded-xl2; background: linear-gradient(180deg, #E4EDF9 0%, #CFDFEF 100%); border: 1px solid rgba(20,20,25,0.04); box-shadow: var(--shadow-soft); }
+  .card-pastel-lavender{ @apply rounded-xl2; background: linear-gradient(180deg, #ECEAF8 0%, #DDD8F0 100%); border: 1px solid rgba(20,20,25,0.04); box-shadow: var(--shadow-soft); }
+  .glass-premium {
+    background: rgba(255, 255, 255, 0.60);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.65);
+  }
+  .scroll-y { overflow-y: auto; scrollbar-width: thin; }
+  .scroll-y::-webkit-scrollbar { width: 8px; }
+  .scroll-y::-webkit-scrollbar-thumb { background: rgba(20,20,25,0.18); border-radius: 999px; }
+}
+
+/* Thin scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #c8d4c2; border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+.gradient-text {
+  background: linear-gradient(90deg, #0b5d3b, #3fae5a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}

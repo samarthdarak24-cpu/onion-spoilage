@@ -1,0 +1,10 @@
+ultralytics
+streamlit
+opencv-python
+numpy
+pandas
+inference-sdk
+python-dotenv
+flask
+flask-cors
+pillow

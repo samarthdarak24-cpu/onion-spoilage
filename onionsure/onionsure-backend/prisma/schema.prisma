@@ -1,0 +1,593 @@
+// ============================================================================
+// OnionSure — Relational domain model (spec §7, indexes per §46)
+//
+// Provider is PostgreSQL as required by the spec. The model is deliberately
+// provider-agnostic in shape so it can be ported without touching services.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  PROCUREMENT_OFFICER
+  FPO
+  FARMER
+  BUYER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum LotStatus {
+  REGISTERED
+  READY_FOR_INSPECTION
+  INSPECTION_IN_PROGRESS
+  GRADED
+  CERTIFIED
+  REJECTED
+  CLOSED
+}
+
+enum InspectionStatus {
+  CREATED
+  SAMPLE_ASSIGNED
+  SENSOR_STABILIZING
+  CAPTURED
+  AI_PROCESSING
+  FUSION_PROCESSING
+  GRADED
+  CERTIFICATE_GENERATED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum Grade {
+  GRADE_A
+  URS
+  REJECTED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  MAINTENANCE
+}
+
+enum AnalysisType {
+  VISION
+  GAS
+  ENVIRONMENT
+  FUSION
+}
+
+enum AnalysisStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum DefectType {
+  HEALTHY
+  DAMAGED
+  ROTTEN
+  SPROUTED
+  UNDERSIZED
+  OTHER
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum AiMode {
+  MOCK
+  REAL
+}
+
+enum CertificateStatus {
+  VALID
+  REVOKED
+  EXPIRED
+}
+
+enum StabilizationStatus {
+  IDLE
+  STABILIZING
+  STABLE
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Identity & organisation
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  email        String?    @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role
+  status       UserStatus @default(ACTIVE)
+
+  // Role-scoped foreign keys used for row-level data ownership (spec §40).
+  fpoId        String?
+  centreId     String?
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  // Relations
+  fpo          Fpo?                @relation(fields: [fpoId], references: [id], onDelete: SetNull)
+  centre       ProcurementCentre?  @relation(fields: [centreId], references: [id], onDelete: SetNull)
+  farmer       Farmer?
+  buyer        Buyer?
+  inspections  Inspection[]        @relation("OfficerInspections")
+  auditLogs    AuditLog[]
+  fusionConfigs FusionConfig[]     @relation("FusionConfigEditor")
+
+  @@index([username])
+  @@index([role])
+  @@index([status])
+  @@map("users")
+}
+
+model Fpo {
+  id                 String             @id @default(cuid())
+  code               String             @unique
+  name               String
+  registrationNumber String?
+  district           String?
+  state              String?
+  contactPerson      String?
+  phone              String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  users              User[]
+  farmers            Farmer[]
+  lots               Lot[]
+  inspections        Inspection[]
+
+  @@index([code])
+  @@map("fpos")
+}
+
+model Farmer {
+  id         String   @id @default(cuid())
+  userId     String?  @unique
+  farmerCode String   @unique
+  name       String
+  phone      String?
+  village    String?
+  district   String?
+  state      String?
+  fpoId      String?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  fpo        Fpo?     @relation(fields: [fpoId], references: [id], onDelete: SetNull)
+  lots       Lot[]
+
+  @@index([fpoId])
+  @@index([farmerCode])
+  @@map("farmers")
+}
+
+model Buyer {
+  id          String   @id @default(cuid())
+  userId      String?  @unique
+  companyName String
+  buyerCode   String   @unique
+  location    String?
+  phone       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([buyerCode])
+  @@map("buyers")
+}
+
+model ProcurementCentre {
+  id         String   @id @default(cuid())
+  centreCode String   @unique
+  name       String
+  location   String?
+  district   String?
+  state      String?
+  status     UserStatus @default(ACTIVE)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  users       User[]
+  lots        Lot[]
+  inspections Inspection[]
+  devices     IoTDevice[]
+
+  @@index([centreCode])
+  @@map("procurement_centres")
+}
+
+// ---------------------------------------------------------------------------
+// Lots
+// ---------------------------------------------------------------------------
+
+model Lot {
+  id          String    @id @default(cuid())
+  lotNumber   String    @unique
+  farmerId    String
+  fpoId       String?
+  centreId    String?
+  crop        String    @default("ONION")
+  quantity    Float
+  unit        String    @default("KG")
+  harvestDate DateTime?
+  status      LotStatus @default(REGISTERED)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  farmer      Farmer             @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  fpo         Fpo?               @relation(fields: [fpoId], references: [id], onDelete: SetNull)
+  centre      ProcurementCentre? @relation(fields: [centreId], references: [id], onDelete: SetNull)
+  inspections Inspection[]
+  certificates Certificate[]
+
+  @@index([lotNumber])
+  @@index([farmerId])
+  @@index([fpoId])
+  @@index([centreId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("lots")
+}
+
+// ---------------------------------------------------------------------------
+// Inspection pipeline
+// ---------------------------------------------------------------------------
+
+model Inspection {
+  id                String            @id @default(cuid())
+  inspectionNumber  String            @unique
+  lotId             String
+  officerId         String?
+  centreId          String?
+  fpoId             String?
+
+  status            InspectionStatus  @default(CREATED)
+
+  // Stabilization (spec §15) — backend owns the timer.
+  stabilizationStatus StabilizationStatus @default(IDLE)
+  stabilizationStartedAt DateTime?
+  stabilizationEndsAt    DateTime?
+
+  // Outcome snapshot (spec §20) — written once at GRADED.
+  qualityScore      Float?
+  grade             Grade?
+  riskLevel         RiskLevel?
+  gradeAPercentage  Float?
+  ursPercentage     Float?
+  rejectedPercentage Float?
+  confidence        Float?
+  earlySpoilage     Boolean           @default(false)
+
+  // Config provenance (spec §32) — historical results keep their version.
+  fusionConfigVersion Int?
+
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  lot               Lot               @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  officer           User?             @relation("OfficerInspections", fields: [officerId], references: [id], onDelete: SetNull)
+  centre            ProcurementCentre? @relation(fields: [centreId], references: [id], onDelete: SetNull)
+  fpo               Fpo?              @relation(fields: [fpoId], references: [id], onDelete: SetNull)
+
+  sample            InspectionSample?
+  images            ImageAsset[]
+  readings          IoTReading[]
+  device            IoTDevice?        @relation("InspectionDevice")
+  analyses          AIAnalysis[]
+  fusionResult      FusionResult?
+  certificates      Certificate[]
+
+  @@index([inspectionNumber])
+  @@index([lotId])
+  @@index([officerId])
+  @@index([status])
+  @@index([grade])
+  @@index([createdAt])
+  @@map("inspections")
+}
+
+model InspectionSample {
+  id           String     @id @default(cuid())
+  inspectionId String     @unique
+  sampleCode   String     @unique
+  sampleSize   Int        @default(100)
+  weight       Float?
+  createdAt    DateTime   @default(now())
+
+  inspection   Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@map("inspection_samples")
+}
+
+model ImageAsset {
+  id               String     @id @default(cuid())
+  inspectionId     String
+  sampleId         String?
+  storageKey       String
+  originalFilename String?
+  mimeType         String?
+  size             Int?
+  width            Int?
+  height           Int?
+  checksum         String?
+  status           String     @default("UPLOADED")
+  createdAt        DateTime   @default(now())
+
+  inspection       Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([inspectionId])
+  @@map("image_assets")
+}
+
+// ---------------------------------------------------------------------------
+// IoT
+// ---------------------------------------------------------------------------
+
+model IoTDevice {
+  id              String       @id @default(cuid())
+  deviceCode      String       @unique
+  name            String?
+  type            String       @default("GAS_POD")
+  centreId        String?
+  status          DeviceStatus @default(OFFLINE)
+  firmwareVersion String?
+  lastSeenAt      DateTime?
+
+  // Active binding to an inspection (spec §14).
+  boundInspectionId String?    @unique
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  centre          ProcurementCentre? @relation(fields: [centreId], references: [id], onDelete: SetNull)
+  boundInspection Inspection?  @relation("InspectionDevice", fields: [boundInspectionId], references: [id], onDelete: SetNull)
+  readings        IoTReading[]
+
+  @@index([deviceCode])
+  @@index([status])
+  @@map("iot_devices")
+}
+
+model IoTReading {
+  id           String   @id @default(cuid())
+  deviceId     String?
+  inspectionId String?
+  timestamp    DateTime @default(now())
+
+  // Generic sensor model (spec §7) — MQ-series or others, no fixed names.
+  temperature  Float?
+  humidity     Float?
+  gas1         Float?
+  gas2         Float?
+  gas3         Float?
+  airQuality   Float?
+  rawPayload   Json?
+
+  createdAt    DateTime @default(now())
+
+  device       IoTDevice?  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  inspection   Inspection? @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([inspectionId])
+  @@index([timestamp])
+  @@map("iot_readings")
+}
+
+// ---------------------------------------------------------------------------
+// AI results & fusion
+// ---------------------------------------------------------------------------
+
+model AIAnalysis {
+  id               String         @id @default(cuid())
+  inspectionId     String
+  analysisType     AnalysisType
+  modelName        String
+  modelVersion     String
+  provider         String         @default("onionsure")
+  mode             AiMode         @default(MOCK)
+  status           AnalysisStatus @default(PENDING)
+  confidence       Float?
+  processingTimeMs Int?
+  resultJson       Json?
+  createdAt        DateTime       @default(now())
+
+  inspection       Inspection     @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  defects          DefectDetection[]
+
+  @@index([inspectionId])
+  @@index([analysisType])
+  @@map("ai_analyses")
+}
+
+model DefectDetection {
+  id               String     @id @default(cuid())
+  aiAnalysisId     String
+  defectType       DefectType
+  confidence       Float?
+  count            Int        @default(0)
+  severity         Severity   @default(LOW)
+  percentage       Float?
+  boundingBoxesJson Json?
+  createdAt        DateTime   @default(now())
+
+  aiAnalysis       AIAnalysis @relation(fields: [aiAnalysisId], references: [id], onDelete: Cascade)
+
+  @@index([aiAnalysisId])
+  @@map("defect_detections")
+}
+
+model FusionResult {
+  id                     String    @id @default(cuid())
+  inspectionId           String    @unique
+
+  visionQuality          Float?
+  visionConfidence       Float?
+  gasQuality             Float?
+  gasConfidence          Float?
+  environmentQuality     Float?
+  environmentConfidence  Float?
+
+  finalScore             Float
+  confidence             Float
+  riskLevel              RiskLevel
+  earlySpoilage          Boolean   @default(false)
+  explanationJson        Json?
+
+  // Snapshot of the weights actually used (spec §32 / §48).
+  weightsJson            Json?
+  fusionConfigVersion    Int?
+
+  createdAt              DateTime  @default(now())
+
+  inspection             Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([inspectionId])
+  @@map("fusion_results")
+}
+
+// ---------------------------------------------------------------------------
+// Configuration (admin-tunable, versioned — spec §32)
+// ---------------------------------------------------------------------------
+
+model QualityThreshold {
+  id                  String   @id @default(cuid())
+  grade               Grade
+  minScore            Float
+  maxScore            Float
+  minGradeAPercentage Float?
+  maxGradeAPercentage Float?
+  enabled             Boolean  @default(true)
+  version             Int      @default(1)
+  isActive            Boolean  @default(true)
+  updatedAt           DateTime @updatedAt
+
+  @@index([grade])
+  @@map("quality_thresholds")
+}
+
+model FusionConfig {
+  id                   String   @id @default(cuid())
+  visionWeight         Float
+  gasWeight            Float
+  environmentWeight    Float
+  earlySpoilageEnabled Boolean  @default(true)
+  version              Int
+  isActive             Boolean  @default(true)
+  updatedBy            String?
+  updatedAt            DateTime @updatedAt
+
+  updatedByUser        User?    @relation("FusionConfigEditor", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([version])
+  @@map("fusion_configs")
+}
+
+// ---------------------------------------------------------------------------
+// Certificates & verification (spec §21–§24)
+// ---------------------------------------------------------------------------
+
+model Certificate {
+  id                 String            @id @default(cuid())
+  certificateNumber  String            @unique
+  inspectionId       String
+  lotId              String?
+
+  // Immutable snapshot of everything the certificate asserts (spec §22/§48).
+  snapshotJson       Json
+  hash               String
+  verificationToken  String            @unique
+  qrData             String?
+
+  grade              Grade?
+  qualityScore       Float?
+  riskLevel          RiskLevel?
+  gradeAPercentage   Float?
+  ursPercentage      Float?
+  rejectedPercentage Float?
+
+  issuedAt           DateTime          @default(now())
+  expiresAt          DateTime?
+  status             CertificateStatus @default(VALID)
+  revokedAt          DateTime?
+  revokedById        String?
+  revokeReason       String?
+
+  createdAt          DateTime          @default(now())
+
+  inspection         Inspection        @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  lot                Lot?              @relation(fields: [lotId], references: [id], onDelete: SetNull)
+
+  @@index([certificateNumber])
+  @@index([verificationToken])
+  @@index([inspectionId])
+  @@index([status])
+  @@map("certificates")
+}
+
+// ---------------------------------------------------------------------------
+// Audit (spec §28)
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  action      String
+  entityType  String?
+  entityId    String?
+  metadataJson Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityId])
+  @@index([createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}
