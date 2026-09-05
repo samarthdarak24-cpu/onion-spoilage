@@ -484,36 +484,54 @@ def camera_status():
             "message": "..."
         }
     """
+    cap = None
     try:
-        cap = cv2.VideoCapture(0)
+        import time
+        start_time = time.time()
+        timeout = 5  # 5 second timeout
+        
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Use DirectShow on Windows
+        
+        # Wait for camera to open with timeout
+        while not cap.isOpened() and (time.time() - start_time) < timeout:
+            time.sleep(0.1)
+        
         available = cap.isOpened()
         
         if available:
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             fps = int(cap.get(cv2.CAP_PROP_FPS))
-            cap.release()
             
             return jsonify({
                 "available": True,
                 "camera_index": 0,
                 "resolution": f"{width}x{height}",
-                "fps": fps,
+                "fps": fps if fps > 0 else 30,
                 "message": "Camera ready for live inspection"
             })
         else:
-            cap.release()
             return jsonify({
                 "available": False,
-                "message": "No camera detected"
+                "message": "No camera detected or camera timeout"
             }), 404
     
     except Exception as e:
+        import traceback
+        print(f"Camera status error: {e}")
+        print(traceback.format_exc())
         return jsonify({
             "available": False,
             "error": str(e),
             "message": "Camera check failed"
         }), 500
+    
+    finally:
+        if cap:
+            try:
+                cap.release()
+            except:
+                pass
 
 
 @app.route('/api/camera/frame', methods=['GET'])
@@ -529,6 +547,7 @@ def get_camera_frame():
         Direct image file with detections or JSON with base64
     """
     filepath = None
+    cap = None
     
     try:
         import base64
@@ -538,21 +557,40 @@ def get_camera_frame():
         run_detection = request.args.get('detect', 'false').lower() == 'true'
         response_format = request.args.get('format', 'image')
         
-        # Capture frame
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            return jsonify({"error": "Camera not available"}), 500
-            
-        ret, frame = cap.read()
-        cap.release()
+        # Capture frame with retry logic
+        max_retries = 3
+        frame = None
         
-        if not ret:
-            return jsonify({"error": "Failed to capture frame"}), 500
+        for attempt in range(max_retries):
+            cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Use DirectShow on Windows for better compatibility
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            
+            if not cap.isOpened():
+                if cap:
+                    cap.release()
+                time.sleep(0.1)
+                continue
+            
+            # Wait for camera to initialize
+            time.sleep(0.05)
+            
+            # Try to read frame
+            ret, frame = cap.read()
+            cap.release()
+            
+            if ret and frame is not None:
+                break
+            
+            time.sleep(0.1)
+        
+        if frame is None:
+            return jsonify({"error": "Failed to capture frame after retries"}), 500
         
         # Process frame
         if run_detection:
             # Save temporary frame
-            filepath = OUTPUT_DIR / f"temp_camera_frame_{int(time.time())}.jpg"
+            filepath = OUTPUT_DIR / f"temp_camera_frame_{int(time.time() * 1000)}.jpg"
             cv2.imwrite(str(filepath), frame)
             
             # Run detection
@@ -562,8 +600,12 @@ def get_camera_frame():
             )
             
             processed_frame = result["annotated_image"]
+            detections = result.get("detections", [])
+            statistics = result.get("statistics", {})
         else:
             processed_frame = frame
+            detections = []
+            statistics = {}
         
         # Encode frame
         _, buffer = cv2.imencode('.jpg', processed_frame)
@@ -574,8 +616,8 @@ def get_camera_frame():
             return jsonify({
                 "success": True,
                 "image": f"data:image/jpeg;base64,{img_base64}",
-                "detections": result.get("detections", []) if run_detection else [],
-                "statistics": result.get("statistics", {}) if run_detection else {},
+                "detections": detections,
+                "statistics": statistics,
                 "timestamp": datetime.now().isoformat()
             })
         else:
@@ -587,9 +629,14 @@ def get_camera_frame():
             )
     
     except Exception as e:
+        import traceback
+        print(f"Camera frame error: {e}")
+        print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
     
     finally:
+        if cap:
+            cap.release()
         if filepath:
             cleanup_temp_file(filepath)
 

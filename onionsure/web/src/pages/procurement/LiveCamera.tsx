@@ -33,7 +33,15 @@ export default function LiveCamera() {
   const checkCameraStatus = async () => {
     try {
       setCameraStatus('checking');
-      const response = await fetch(`${AI_API_URL}/api/camera/status`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const response = await fetch(`${AI_API_URL}/api/camera/status`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
       const data = await response.json();
       
       if (data.available) {
@@ -43,19 +51,33 @@ export default function LiveCamera() {
         setCameraStatus('unavailable');
         setError('Camera not detected. Please connect a camera and try again.');
       }
-    } catch (err) {
+    } catch (err: any) {
       setCameraStatus('unavailable');
-      setError('Unable to connect to AI service. Make sure it is running on port 5000.');
+      if (err.name === 'AbortError') {
+        setError('Camera check timed out. The camera might be in use by another application.');
+      } else {
+        setError('Unable to connect to AI service. Make sure it is running on port 5000.');
+      }
     }
   };
 
   const startStreaming = () => {
     if (intervalRef.current) return;
 
-    // Fetch frames at ~10 FPS
+    let consecutiveErrors = 0;
+    const maxErrors = 5;
+
+    // Fetch frames at ~5 FPS (slower for stability)
     intervalRef.current = window.setInterval(async () => {
       try {
-        const response = await fetch(`${AI_API_URL}/api/camera/frame?detect=true`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout per frame
+        
+        const response = await fetch(`${AI_API_URL}/api/camera/frame?detect=true`, {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
         
         if (response.ok) {
           const blob = await response.blob();
@@ -68,6 +90,7 @@ export default function LiveCamera() {
           
           setFrameUrl(url);
           setError(null);
+          consecutiveErrors = 0; // Reset error counter
 
           // Calculate FPS
           const now = Date.now();
@@ -77,14 +100,25 @@ export default function LiveCamera() {
           }
           lastFrameTimeRef.current = now;
         } else {
-          setError('Failed to fetch frame from camera');
+          consecutiveErrors++;
+          if (consecutiveErrors >= maxErrors) {
+            setError('Too many failed frames. Camera may be unavailable.');
+            setIsStreaming(false);
+          }
+        }
+      } catch (err: any) {
+        consecutiveErrors++;
+        if (err.name === 'AbortError') {
+          setError('Frame capture timed out. Camera may be slow or busy.');
+        } else {
+          setError('Connection lost to AI service');
+        }
+        
+        if (consecutiveErrors >= maxErrors) {
           setIsStreaming(false);
         }
-      } catch (err) {
-        setError('Connection lost to AI service');
-        setIsStreaming(false);
       }
-    }, 100); // 10 FPS
+    }, 200); // 5 FPS
   };
 
   const stopStreaming = () => {
