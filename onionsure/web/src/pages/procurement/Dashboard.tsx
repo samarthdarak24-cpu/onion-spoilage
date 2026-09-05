@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ClipboardList, Clock, Award, AlertTriangle, PlusCircle, TrendingUp } from 'lucide-react';
+import { ClipboardList, Clock, Award, AlertTriangle, PlusCircle, TrendingUp, Camera, ScanLine } from 'lucide-react';
 import { api } from '../../lib/api';
 import { EV_DASHBOARD } from '../../lib/events';
 import { useLiveData } from '../../hooks/useLiveData';
@@ -92,6 +92,85 @@ export default function ProcDashboard() {
         </StaggerItem>
         <StaggerItem className="h-full">
           <StatCard label="Rejected Lots" value={<AnimatedNumber value={stats.rejectedLots} />} sub="did not pass" accent="reject" icon={AlertTriangle} />
+        </StaggerItem>
+      </Stagger>
+
+      {/* Computer Vision Feature */}
+      <Stagger className="grid gap-4 lg:grid-cols-3" delay={0.15}>
+        <StaggerItem className="lg:col-span-2">
+          <Card className="p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="mb-1 flex items-center gap-2">
+                  <Camera className="text-forest" size={20} />
+                  <h3 className="text-base font-bold text-ink">Computer Vision Inspector</h3>
+                  <Badge tone="forest">AI-Powered</Badge>
+                </div>
+                <p className="mb-4 text-sm text-muted">
+                  Real-time onion quality detection using our trained YOLOv8 model. Get instant defect analysis with bounding boxes and confidence scores.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Link 
+                    to="/quality/ai-analysis" 
+                    className="flex items-center justify-between rounded-lg border border-forest/20 bg-mint/30 px-4 py-3 text-sm font-semibold text-forest transition-all hover:border-forest/40 hover:bg-mint/50"
+                  >
+                    <span className="flex items-center gap-2">
+                      <ScanLine size={16} />
+                      Upload & Analyze
+                    </span>
+                    <span className="text-xs">→</span>
+                  </Link>
+                  <Link 
+                    to="/quality/live-camera" 
+                    className="flex items-center justify-between rounded-lg border border-forest/20 bg-gradient-to-r from-forest/10 to-fresh/10 px-4 py-3 text-sm font-semibold text-forest transition-all hover:border-forest/40 hover:from-forest/20 hover:to-fresh/20"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Camera size={16} />
+                      Live Camera Feed
+                    </span>
+                    <span className="text-xs">→</span>
+                  </Link>
+                </div>
+              </div>
+              <div className="hidden sm:block">
+                <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-gradient-to-br from-forest to-fresh">
+                  <ScanLine className="text-white" size={40} strokeWidth={2.5} />
+                </div>
+              </div>
+            </div>
+          </Card>
+        </StaggerItem>
+        
+        <StaggerItem>
+          <Card className="p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-forest/10">
+                <Award className="text-forest" size={16} />
+              </div>
+              <h3 className="text-sm font-bold text-ink">Model Info</h3>
+            </div>
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted">Architecture:</span>
+                <span className="font-semibold text-ink">YOLOv8</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Model Source:</span>
+                <span className="font-semibold text-ink">Roboflow</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Detection:</span>
+                <span className="font-semibold text-forest">Real-time</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Classes:</span>
+                <span className="font-semibold text-ink">Multiple Defects</span>
+              </div>
+            </div>
+            <div className="mt-4 rounded-lg bg-mint/40 px-3 py-2 text-center text-[11px] font-semibold text-forest">
+              ✓ Model Active & Ready
+            </div>
+          </Card>
         </StaggerItem>
       </Stagger>
 

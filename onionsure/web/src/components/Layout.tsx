@@ -3,7 +3,7 @@ import { NavLink, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, FilePlus2, Radio, ScanLine, GitMerge, Award, QrCode, History,
-  BarChart3, Building2, Settings, Search, Bell, MapPin, LogOut, Menu,
+  BarChart3, Building2, Settings, Search, Bell, MapPin, LogOut, Menu, Camera,
   ChevronLeft, Users as UsersIcon, FileBarChart, ShieldCheck, UserCog, Sprout,
   Tractor, Store, ChevronDown, RefreshCw,
 } from 'lucide-react';
@@ -32,6 +32,7 @@ const NAV: Record<Role, NavSection[]> = {
         { to: '/quality/new-inspection', label: 'New Inspection', icon: FilePlus2 },
         { to: '/quality/live-sensor', label: 'Live Sensor', icon: Radio },
         { to: '/quality/ai-analysis', label: 'AI Analysis', icon: ScanLine },
+        { to: '/quality/live-camera', label: 'Live Camera', icon: Camera },
         { to: '/quality/fusion', label: 'Fusion Intelligence', icon: GitMerge },
         { to: '/quality/history', label: 'Inspection History', icon: History },
       ],

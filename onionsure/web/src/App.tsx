@@ -15,6 +15,7 @@ const ProcDashboard = lazy(() => import('./pages/procurement/Dashboard'));
 const NewInspection = lazy(() => import('./pages/procurement/NewInspection'));
 const LiveSensor = lazy(() => import('./pages/procurement/LiveSensor'));
 const AIAnalysis = lazy(() => import('./pages/procurement/AIAnalysis'));
+const LiveCamera = lazy(() => import('./pages/procurement/LiveCamera'));
 const Fusion = lazy(() => import('./pages/procurement/Fusion'));
 const Certificates = lazy(() => import('./pages/procurement/Certificates'));
 const QrVerify = lazy(() => import('./pages/procurement/QrVerify'));
@@ -70,6 +71,7 @@ export default function App() {
       <Route path="/quality/new-inspection" element={<Dash><NewInspection /></Dash>} />
       <Route path="/quality/live-sensor" element={<Dash><LiveSensor /></Dash>} />
       <Route path="/quality/ai-analysis" element={<Dash><AIAnalysis /></Dash>} />
+      <Route path="/quality/live-camera" element={<Dash><LiveCamera /></Dash>} />
       <Route path="/quality/fusion" element={<Dash><Fusion /></Dash>} />
       <Route path="/quality/certificates" element={<Dash><Certificates /></Dash>} />
       <Route path="/quality/qr-verify" element={<Dash><QrVerify /></Dash>} />
