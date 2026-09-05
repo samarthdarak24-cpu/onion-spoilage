@@ -468,6 +468,105 @@ def internal_error(e):
 
 
 # ==========================================================================
+# LIVE CAMERA ENDPOINTS
+# ==========================================================================
+
+@app.route('/api/camera/status', methods=['GET'])
+def camera_status():
+    """
+    Check if camera is available for live inspection.
+    
+    Returns:
+        {
+            "available": true/false,
+            "camera_index": 0,
+            "message": "..."
+        }
+    """
+    try:
+        cap = cv2.VideoCapture(0)
+        available = cap.isOpened()
+        
+        if available:
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = int(cap.get(cv2.CAP_PROP_FPS))
+            cap.release()
+            
+            return jsonify({
+                "available": True,
+                "camera_index": 0,
+                "resolution": f"{width}x{height}",
+                "fps": fps,
+                "message": "Camera ready for live inspection"
+            })
+        else:
+            cap.release()
+            return jsonify({
+                "available": False,
+                "message": "No camera detected"
+            }), 404
+    
+    except Exception as e:
+        return jsonify({
+            "available": False,
+            "error": str(e),
+            "message": "Camera check failed"
+        }), 500
+
+
+@app.route('/api/camera/frame', methods=['GET'])
+def get_camera_frame():
+    """
+    Get single camera frame with detection (for web integration).
+    
+    Returns:
+        Base64 encoded annotated image with detections
+    """
+    filepath = None
+    
+    try:
+        import base64
+        
+        # Capture frame
+        cap = cv2.VideoCapture(0)
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret:
+            return jsonify({"error": "Failed to capture frame"}), 500
+        
+        # Save temporary frame
+        filepath = OUTPUT_DIR / f"temp_camera_frame_{int(time.time())}.jpg"
+        cv2.imwrite(str(filepath), frame)
+        
+        # Run detection
+        result = detect_defects_with_sizing(
+            str(filepath),
+            confidence_threshold=0.4
+        )
+        
+        # Encode annotated image
+        _, buffer = cv2.imencode('.jpg', result["annotated_image"])
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        return jsonify({
+            "success": True,
+            "image": f"data:image/jpeg;base64,{img_base64}",
+            "detections": result["detections"],
+            "statistics": result["statistics"],
+            "timestamp": datetime.now().isoformat()
+        })
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+    finally:
+        if filepath:
+            cleanup_temp_file(filepath)
+
+
+# ==========================================================================
 # MAIN
 # ==========================================================================
 
@@ -480,6 +579,8 @@ if __name__ == '__main__':
     print("  POST /api/calibrate           - Calibrate size estimation")
     print("  POST /api/batch               - Batch processing")
     print("  POST /api/detect-annotated    - Get annotated image")
+    print("  GET  /api/camera/status       - Check camera availability")
+    print("  GET  /api/camera/frame        - Get single camera frame")
     print("  GET  /api/info                - System information")
     print("  GET  /api/classes             - List defect classes")
     print("  GET  /health                  - Health check")
