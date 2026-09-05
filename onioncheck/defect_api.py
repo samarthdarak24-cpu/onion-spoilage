@@ -15,6 +15,7 @@ Access at: http://localhost:5000
 """
 
 import os
+import io
 import tempfile
 import json
 from pathlib import Path
@@ -520,43 +521,70 @@ def get_camera_frame():
     """
     Get single camera frame with detection (for web integration).
     
+    Query params:
+        - detect: if true, run AI detection on frame
+        - format: 'json' for base64, 'image' for direct image (default: image)
+    
     Returns:
-        Base64 encoded annotated image with detections
+        Direct image file with detections or JSON with base64
     """
     filepath = None
     
     try:
         import base64
+        import time
+        
+        # Check if detection is requested
+        run_detection = request.args.get('detect', 'false').lower() == 'true'
+        response_format = request.args.get('format', 'image')
         
         # Capture frame
         cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            return jsonify({"error": "Camera not available"}), 500
+            
         ret, frame = cap.read()
         cap.release()
         
         if not ret:
             return jsonify({"error": "Failed to capture frame"}), 500
         
-        # Save temporary frame
-        filepath = OUTPUT_DIR / f"temp_camera_frame_{int(time.time())}.jpg"
-        cv2.imwrite(str(filepath), frame)
+        # Process frame
+        if run_detection:
+            # Save temporary frame
+            filepath = OUTPUT_DIR / f"temp_camera_frame_{int(time.time())}.jpg"
+            cv2.imwrite(str(filepath), frame)
+            
+            # Run detection
+            result = detect_defects_with_sizing(
+                str(filepath),
+                confidence_threshold=0.4
+            )
+            
+            processed_frame = result["annotated_image"]
+        else:
+            processed_frame = frame
         
-        # Run detection
-        result = detect_defects_with_sizing(
-            str(filepath),
-            confidence_threshold=0.4
-        )
+        # Encode frame
+        _, buffer = cv2.imencode('.jpg', processed_frame)
         
-        # Encode annotated image
-        _, buffer = cv2.imencode('.jpg', result["annotated_image"])
-        img_base64 = base64.b64encode(buffer).decode('utf-8')
-        
-        return jsonify({
-            "success": True,
-            "image": f"data:image/jpeg;base64,{img_base64}",
-            "detections": result["detections"],
-            "statistics": result["statistics"],
-            "timestamp": datetime.now().isoformat()
-        })
+        # Return based on format
+        if response_format == 'json':
+            img_base64 = base64.b64encode(buffer).decode('utf-8')
+            return jsonify({
+                "success": True,
+                "image": f"data:image/jpeg;base64,{img_base64}",
+                "detections": result.get("detections", []) if run_detection else [],
+                "statistics": result.get("statistics", {}) if run_detection else {},
+                "timestamp": datetime.now().isoformat()
+            })
+        else:
+            # Return image directly
+            return send_file(
+                io.BytesIO(buffer.tobytes()),
+                mimetype='image/jpeg',
+                as_attachment=False
+            )
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500

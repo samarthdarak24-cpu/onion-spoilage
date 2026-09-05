@@ -36,7 +36,7 @@ export default function LiveCamera() {
       const response = await fetch(`${AI_API_URL}/api/camera/status`);
       const data = await response.json();
       
-      if (data.camera_available) {
+      if (data.available) {
         setCameraStatus('available');
         setError(null);
       } else {
