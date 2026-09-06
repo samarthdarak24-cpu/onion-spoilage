@@ -1,0 +1,16 @@
+# OnionSure Quality Dataset - YOLO Segmentation Format
+# NOTE: The YOLO seg dataset only has class 0 (onion) labels.
+# Class 1 (unhealthy) has no segmentation labels.
+# The local model detects onions; quality classification is done
+# via the Roboflow cloud model (press T in live_onion_combined.py).
+
+path: C:/Users/darak/Desktop/onion zip/onioncheck
+train: train/images
+val: valid/images
+
+# Number of classes
+nc: 1
+
+# Class names
+names:
+  0: onion
