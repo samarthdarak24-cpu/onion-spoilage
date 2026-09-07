@@ -10,7 +10,11 @@ import {
 import clsx from 'clsx';
 import { useAuth, ROLE_HOME } from '../lib/auth';
 import { PageTransition } from './motion';
+import ChatWidget from './ChatWidget';
 import type { Role } from '../lib/types';
+
+// Roles that get the multilingual AI chatbot (farmer-facing & FPO)
+const CHATBOT_ROLES: Role[] = ['farmer', 'fpo', 'buyer'];
 
 type NavItem = { to: string; label: string; icon: any };
 type NavSection = { section: string; items: NavItem[] };
@@ -356,6 +360,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           </div>
         </main>
       </div>
+
+      {/* ── Multilingual AI Chatbot — shown for farmer, FPO & buyer only ── */}
+      {CHATBOT_ROLES.includes(user.role) && <ChatWidget />}
     </div>
   );
 }
