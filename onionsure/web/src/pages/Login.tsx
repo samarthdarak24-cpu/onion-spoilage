@@ -425,9 +425,12 @@ export default function Login() {
             )}
 
             <button
-              className="group relative flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-forest to-sb-600 px-4 py-3.5 text-[14px] font-bold text-white shadow-[0_8px_24px_-8px_rgba(11,93,59,0.45)] transition-all duration-300 hover:shadow-[0_12px_28px_-8px_rgba(11,93,59,0.55)] hover:-translate-y-[1px] disabled:opacity-60 disabled:hover:translate-y-0"
+              className="group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl bg-gradient-to-r from-[#0B5D3B] via-[#0e6b44] to-[#3FAE5A] px-4 py-3.5 text-[14px] font-bold text-white transition-all duration-300 hover:-translate-y-[1px] disabled:opacity-60 disabled:hover:translate-y-0"
+              style={{ boxShadow: '0 8px 28px -6px rgba(11,93,59,0.55), inset 0 1px 0 rgba(255,255,255,0.15)' }}
               disabled={busy}
             >
+              {/* Shimmer sweep on hover */}
+              <span className="pointer-events-none absolute inset-0 -translate-x-full skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-[150%]" />
               {busy ? (
                 <>
                   <Spinner />
@@ -436,7 +439,7 @@ export default function Login() {
               ) : (
                 <>
                   <span>Sign In</span>
-                  <ArrowRight size={16} className="transition group-hover:translate-x-0.5" />
+                  <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
                 </>
               )}
             </button>
@@ -535,9 +538,15 @@ export default function Login() {
             )}
 
             <button
-              className="group relative flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-forest to-sb-600 px-4 py-3.5 text-[14px] font-bold text-white shadow-[0_8px_24px_-8px_rgba(11,93,59,0.45)] transition-all duration-300 hover:shadow-[0_12px_28px_-8px_rgba(11,93,59,0.55)] hover:-translate-y-[1px] disabled:opacity-60 disabled:hover:translate-y-0"
+              className="group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl px-4 py-3.5 text-[14px] font-bold text-white transition-all duration-300 hover:-translate-y-[1px] disabled:opacity-60 disabled:hover:translate-y-0"
+              style={{
+                background: 'linear-gradient(135deg, #0B5D3B 0%, #0e6b44 40%, #3FAE5A 100%)',
+                boxShadow: '0 8px 28px -6px rgba(11,93,59,0.55), inset 0 1px 0 rgba(255,255,255,0.15)',
+              }}
               disabled={busy}
             >
+              {/* Shimmer sweep */}
+              <span className="pointer-events-none absolute inset-0 -translate-x-full skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-[150%]" />
               {busy ? (
                 <>
                   <Spinner />
@@ -545,7 +554,7 @@ export default function Login() {
                 </>
               ) : (
                 <>
-                  <Sprout size={16} />
+                  <Sprout size={17} className="shrink-0" />
                   <span>Create Farmer Account</span>
                 </>
               )}
