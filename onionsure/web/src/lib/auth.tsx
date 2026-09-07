@@ -58,6 +58,10 @@ function clearSession(): void {
   setToken(null);
   setStoredUser(null);
   localStorage.removeItem(SESSION_TS_KEY);
+  // Clear active inspection context so Quality Certificates never shows
+  // a stale inspection from a previous session after logout.
+  localStorage.removeItem('onionsure_current_inspection_id');
+  localStorage.removeItem('onionsure_current_lot_id');
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

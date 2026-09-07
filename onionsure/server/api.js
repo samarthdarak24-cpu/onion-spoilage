@@ -1228,18 +1228,33 @@ function buildCertificate(inspectionId) {
   if (!fusion) return null;
   const lot = db.find('lots', (l) => l.id === sess.lotId);
   const vision = db.filter('vision_detections', (d) => d.inspectionId === inspectionId);
-  const total = vision.length || 100;
-  const pct = (cls) => +(((vision.filter((v) => v.class === cls).length) / total) * 100).toFixed(1);
   const center = db.find('procurement_centers', (c) => c.id === lot.procurementCenterId);
+
+  // Use real detection counts when available; fall back to fusion's stored percentages
+  // (never fall back to hardcoded numbers).
+  let gradeAPct, ursPct, rejectedPct;
+  if (vision.length > 0) {
+    const total = vision.length;
+    const pct = (cls) => +(((vision.filter((v) => v.class === cls).length) / total) * 100).toFixed(1);
+    gradeAPct   = pct('healthy');
+    ursPct      = +(pct('damaged') + pct('sprouted')).toFixed(1);
+    rejectedPct = +(pct('rotten')  + pct('undersized')).toFixed(1);
+  } else {
+    // Use fusion-computed percentages which are derived from the actual grading engine
+    gradeAPct   = fusion.gradeAPercentage   ?? null;
+    ursPct      = fusion.ursPercentage      ?? null;
+    rejectedPct = fusion.rejectedPercentage ?? null;
+  }
+
   const cert = {
     id: db.id('cert'),
     inspectionId,
     certificateNumber: `CERT-ON-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 899999)}`,
     grade: fusion.grade,
     qualityScore: fusion.finalScore,
-    grade_a_percentage: pct('healthy'),
-    urs_percentage: +(pct('damaged') + pct('sprouted')).toFixed(1),
-    rejected_percentage: +(pct('rotten') + pct('undersized')).toFixed(1),
+    grade_a_percentage: gradeAPct,
+    urs_percentage: ursPct,
+    rejected_percentage: rejectedPct,
     qrToken: db.id('qr'),
     latitude: center?.latitude || null,
     longitude: center?.longitude || null,
@@ -1338,21 +1353,27 @@ router.get('/certificates/:id', (req, res) => {
   const detections = db.filter('vision_detections', (d) => d.inspectionId === cert.inspectionId);
 
   const defectCounts = {
-    healthy: detections.filter((d) => d.class === 'healthy').length,
-    damaged: detections.filter((d) => d.class === 'damaged').length,
-    rotten: detections.filter((d) => d.class === 'rotten').length,
-    sprouted: detections.filter((d) => d.class === 'sprouted').length,
-    undersized: detections.filter((d) => d.class === 'undersized').length,
+    healthy:   detections.filter((d) => d.class === 'healthy').length,
+    damaged:   detections.filter((d) => d.class === 'damaged').length,
+    rotten:    detections.filter((d) => d.class === 'rotten').length,
+    sprouted:  detections.filter((d) => d.class === 'sprouted').length,
+    undersized:detections.filter((d) => d.class === 'undersized').length,
   };
+  // Only synthesise defect counts from stored percentages when we have no raw detections.
+  // Never use hardcoded numbers.
   if (detections.length === 0) {
-    const a = cert.grade_a_percentage ?? 72;
-    const u = cert.urs_percentage ?? 18;
-    const r = cert.rejected_percentage ?? 10;
-    defectCounts.healthy = Math.round(a);
-    defectCounts.damaged = Math.max(1, Math.round(u * 0.5));
-    defectCounts.sprouted = Math.max(1, Math.round(u * 0.25));
-    defectCounts.rotten = Math.max(1, Math.round(r * 0.5));
-    defectCounts.undersized = Math.max(1, Math.round(r * 0.5));
+    const a = cert.grade_a_percentage;   // may be null
+    const u = cert.urs_percentage;       // may be null
+    const r = cert.rejected_percentage;  // may be null
+    if (a != null) defectCounts.healthy   = Math.round(a);
+    if (u != null) {
+      defectCounts.damaged  = Math.max(0, Math.round(u * 0.6));
+      defectCounts.sprouted = Math.max(0, Math.round(u * 0.4));
+    }
+    if (r != null) {
+      defectCounts.rotten    = Math.max(0, Math.round(r * 0.6));
+      defectCounts.undersized= Math.max(0, Math.round(r * 0.4));
+    }
   }
 
   res.json({ certificate: cert, lot, fusion, sensors, center, fpo, farmer, inspector, session: sess, defectCounts });

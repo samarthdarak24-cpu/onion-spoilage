@@ -101,9 +101,18 @@ export default function NewInspection() {
         mode: 'STANDARD',
       });
 
-      // Persist current inspection so Fusion Intelligence can auto-load it
+      // Persist current inspection so all pages can access it.
+      // Also dispatch a storage event so same-tab listeners (e.g. Certificates page)
+      // react immediately when the officer navigates back.
       localStorage.setItem('onionsure_current_inspection_id', inspection.id);
       localStorage.setItem('onionsure_current_lot_id', lot.id);
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'onionsure_current_inspection_id',
+          newValue: inspection.id,
+          storageArea: localStorage,
+        })
+      );
 
       // Navigate to unified Quality Assessment
       nav(`/quality/assessment/${inspection.id}`);
