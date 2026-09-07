@@ -92,8 +92,80 @@ export const api = {
   simulateStart: (payload: any) => req<any>('/iot/simulate/start', { method: 'POST', body: payload }),
   simulateTick: (payload: any) => req<{ device: any; gas: GasResult }>('/iot/simulate/tick', { method: 'POST', body: payload }),
   simulateStop: (payload: any) => req('/iot/simulate/stop', { method: 'POST', body: payload }),
+  /**
+   * Compute IoT quality condition from demo sensor readings.
+   * Never returns raw sensor values — only condition label, score, confidence, stage.
+   * Optionally persists against an open inspection session.
+   */
+  iotCompute: (payload?: { inspectionId?: string; deviceId?: string; scenario?: 'normal' | 'spoilage' }) =>
+    req<{
+      success: boolean;
+      condition: 'EXCELLENT' | 'GOOD';
+      conditionLabel: string;
+      gasScore: number;
+      confidence: number;
+      stage: 'LOW' | 'MEDIUM' | 'HIGH';
+      riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+      mode: string;
+      source: string;
+      sourceLabel: string;
+      timestamp: string;
+      readingId?: string;
+      inspectionId?: string;
+    }>('/iot/compute', { method: 'POST', body: payload || {} }),
 
   // fusion
+  /**
+   * Scoped evidence loader — returns ONLY vision + IoT evidence belonging to
+   * this exact inspectionId. Never leaks data from another lot or inspection.
+   *
+   * Use this as the entry-point for the Fusion Intelligence page instead of
+   * getFusionContext() which hardcodes lot ON-2026-00421.
+   */
+  getFusionEvidence: (inspectionId: string) => req<{
+    inspectionId: string;
+    lotId: string | null;
+    lotNumber: string | null;
+    centralLotId: string | null;
+    hasVision: boolean;
+    hasIoT: boolean;
+    vision: {
+      source: string;
+      total: number;
+      counts: Record<string, number>;
+      percentages: Record<string, number>;
+      visionScore: number;
+      confidence: number;
+    } | null;
+    iot: {
+      source: string;
+      gasScore: number;
+      stage: 'LOW' | 'MEDIUM' | 'HIGH';
+      condition: 'EXCELLENT' | 'GOOD';
+      conditionLabel: string;
+      confidence: number;
+      environmentScore?: number;
+      timestamp: string;
+    } | null;
+    storedFusion: FusionResult | null;
+    session: {
+      status: string;
+      workflowState: string;
+      startedAt: string;
+      completedAt: string | null;
+    };
+    lot: {
+      lotNumber: string | null;
+      centralLotId: string | null;
+      variety: string | null;
+      crop: string | null;
+      quantityKg: number | null;
+      farmerId: string | null;
+      fpoId: string | null;
+      procurementCenterId: string | null;
+    };
+  }>(`/fusion/evidence/${encodeURIComponent(inspectionId)}`),
+
   getFusionContext: (lotNumber?: string) => req<FusionContextResponse>(`/fusion/context${lotNumber ? `?lotNumber=${encodeURIComponent(lotNumber)}` : ''}`),
   calculateFusion: (payload: any) => req<FusionResult>('/fusion/calculate', { method: 'POST', body: payload }),
   commitFusion: (inspectionId: string, lotId: string | undefined, fusionResult: FusionResult) =>

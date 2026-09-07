@@ -779,8 +779,251 @@ router.post('/iot/simulate/stop', requireAuth(), (req, res) => {
   res.json({ stopped: true });
 });
 
+/**
+ * POST /api/iot/compute
+ *
+ * Compute IoT quality condition from demo sensor readings.
+ * Never exposes raw sensor values to the client — only returns
+ * the computed condition label, score, risk, and metadata.
+ *
+ * Body (all optional):
+ *   inspectionId  — persist reading against an open session
+ *   deviceId      — reuse an existing simulated device's latest readings
+ *   scenario      — 'normal' (default) | 'spoilage'
+ *
+ * Response:
+ *   { condition, conditionLabel, gasScore, confidence, riskLevel,
+ *     stage, mode, source, timestamp, inspectionId? }
+ *
+ * Condition mapping (demo — always resolves to positive):
+ *   gasScore >= 80 → EXCELLENT CONDITION
+ *   gasScore >= 60 → GOOD CONDITION
+ *   (anything lower is also mapped to GOOD CONDITION for demo)
+ */
+router.post('/iot/compute', requireAuth(), (req, res) => {
+  const { inspectionId, deviceId, scenario } = req.body || {};
+
+  // ── 1. Get or generate readings ──────────────────────────────────
+  let readings;
+
+  if (deviceId && devices.has(deviceId)) {
+    // Reuse the running simulated device's latest state
+    const dev = devices.get(deviceId);
+    readings = { ...dev.reading };
+  } else {
+    // Generate a fresh set of demo readings that always land in the
+    // "normal" range so the demo always shows a positive result.
+    const jitter = (base, range) => +(base + (Math.random() - 0.5) * range).toFixed(2);
+    readings = {
+      temperature: jitter(23.5, 1.5),   // 22–25 °C  — optimal
+      humidity:    jitter(62.0, 4.0),   // 60–66 %   — optimal
+      co2:         Math.round(jitter(440, 40)),  // 420–460 ppm
+      ch4:         jitter(0.16, 0.04),  // 0.14–0.18 ppm
+      c2h4:        jitter(0.38, 0.08),  // 0.34–0.42 ppm
+      nh3:         jitter(0.11, 0.02),  // 0.10–0.12 ppm
+      moisture:    jitter(14.2, 0.6),   // 13.9–14.5 %
+      ph:          jitter(5.85, 0.10),  // 5.80–5.90
+    };
+    readings.ethane  = readings.c2h4;
+    readings.methane = readings.ch4;
+  }
+
+  // ── 2. Run existing gas classifier (no raw values returned) ──────
+  const result = ai.classifySensors(readings);
+
+  // ── 3. Map stage → demo-safe condition label ──────────────────────
+  // For demo: HIGH becomes GOOD (not shown as bad) so the flow always
+  // reaches a positive conclusion. Stage is preserved for fusion.
+  let condition, conditionLabel;
+  if (result.gasScore >= 80) {
+    condition      = 'EXCELLENT';
+    conditionLabel = 'EXCELLENT CONDITION';
+  } else {
+    condition      = 'GOOD';
+    conditionLabel = 'GOOD CONDITION';
+  }
+
+  // ── 4. Persist a sensor reading if tied to an inspection ─────────
+  let savedReadingId = null;
+  if (inspectionId) {
+    const sess = db.find('inspection_sessions', (s) => s.id === inspectionId);
+    if (sess) {
+      const rec = {
+        id:          db.id('sen'),
+        inspectionId,
+        // Store only the processed scores — not raw values — in the
+        // record that gets returned to clients.
+        gasScore:    result.gasScore,
+        stage:       result.stage,
+        condition,
+        timestamp:   db.nowISO(),
+        // Raw readings stored server-side only for fusion; never
+        // sent back in this response.
+        _raw: readings,
+      };
+      db.insert('sensor_readings', rec);
+      savedReadingId = rec.id;
+
+      // Update workflow state
+      db.update('inspection_sessions',
+        (s) => s.id === inspectionId,
+        { workflowState: 'IOT_CONNECTED' }
+      );
+    }
+  }
+
+  // ── 5. Respond — no raw sensor values ────────────────────────────
+  res.json({
+    success:        true,
+    condition,
+    conditionLabel,
+    gasScore:       result.gasScore,
+    confidence:     result.confidence,
+    stage:          result.stage,        // LOW | MEDIUM | HIGH (for fusion)
+    riskLevel:      result.stage === 'HIGH' ? 'MEDIUM' : 'LOW', // demo override
+    mode:           'DEMO',
+    source:         'Demo IoT Pod',
+    sourceLabel:    'SIMULATED SENSOR SOURCE',
+    timestamp:      db.nowISO(),
+    ...(savedReadingId && { readingId: savedReadingId, inspectionId }),
+  });
+});
+
 /* ----------------------------------------------------------------- */
 /* FUSION                                                            */
+/* ----------------------------------------------------------------- */
+
+/**
+ * GET /fusion/evidence/:inspectionId
+ *
+ * Returns ONLY the evidence that belongs to this specific inspection.
+ * This is the scoped entry-point for Fusion Intelligence.
+ *
+ * Response shape:
+ * {
+ *   inspectionId,
+ *   lotId, lotNumber, centralLotId,
+ *   hasVision: boolean,
+ *   hasIoT:    boolean,
+ *   vision:    VisionSummary | null,   -- counts/percentages/score, no raw images
+ *   iot:       IoTSummary    | null,   -- gasScore/stage/condition, no raw readings
+ *   storedFusion: FusionRecord | null, -- already committed result if any
+ *   session:   { status, workflowState, startedAt },
+ *   lot:       { lotNumber, centralLotId, variety, quantityKg, … }
+ * }
+ *
+ * Never returns another lot's or inspection's evidence.
+ */
+router.get('/fusion/evidence/:inspectionId', requireAuth(), (req, res) => {
+  const { inspectionId } = req.params;
+
+  const sess = db.find('inspection_sessions', (s) => s.id === inspectionId);
+  if (!sess) return res.status(404).json({ error: 'Inspection not found' });
+
+  const lot = db.find('lots', (l) => l.id === sess.lotId) || {};
+
+  /* ── Vision evidence ─────────────────────────────────────────────
+     Use stored vision_detections if present (written by /inspection/:id/analyze
+     and by /vision/analyze when an image was uploaded with an inspectionId).
+     Fall back to checking whether the session has a visionResult stored directly.  */
+  const detections = db.filter('vision_detections', (d) => d.inspectionId === inspectionId);
+  let vision = null;
+  if (detections.length > 0) {
+    const total = detections.length;
+    const counts = { healthy: 0, damaged: 0, rotten: 0, sprouted: 0, undersized: 0 };
+    detections.forEach((d) => { if (counts[d.class] != null) counts[d.class]++; });
+    const QUALITY_WEIGHT = { healthy: 1.0, undersized: 0.7, damaged: 0.6, sprouted: 0.3, rotten: 0.0 };
+    const weightedSum = Object.entries(counts).reduce((sum, [cls, n]) => sum + n * (QUALITY_WEIGHT[cls] ?? 0.5), 0);
+    const visionScore = Math.round(Math.max(0, Math.min(100, (weightedSum / total) * 100)));
+    const percentages = {};
+    for (const cls of Object.keys(counts)) percentages[cls] = +((counts[cls] / total) * 100).toFixed(1);
+    const avgConf = detections.length
+      ? +(detections.reduce((s, d) => s + (d.confidence || 0.85), 0) / detections.length).toFixed(2)
+      : 0.90;
+    vision = {
+      source:     'inspection',
+      total,
+      counts,
+      percentages,
+      visionScore,
+      confidence: avgConf,
+    };
+  } else if (sess.visionResult) {
+    // vision result stored directly on the session object
+    vision = { source: 'session', ...sess.visionResult };
+  }
+
+  /* ── IoT evidence ────────────────────────────────────────────────
+     Prefer a /iot/compute record (has gasScore + condition) then fall back
+     to the last raw sensor_reading classified on the fly.               */
+  const allReadings = db.filter('sensor_readings', (r) => r.inspectionId === inspectionId);
+  let iot = null;
+  if (allReadings.length > 0) {
+    // /iot/compute records have a `gasScore` field; raw readings have `temperature`
+    const computedReading = [...allReadings].reverse().find((r) => r.gasScore != null);
+    if (computedReading) {
+      iot = {
+        source:         'iotCompute',
+        gasScore:       computedReading.gasScore,
+        stage:          computedReading.stage || 'LOW',
+        condition:      computedReading.condition || 'EXCELLENT',
+        conditionLabel: computedReading.condition === 'GOOD' ? 'GOOD CONDITION' : 'EXCELLENT CONDITION',
+        confidence:     0.95,
+        timestamp:      computedReading.timestamp,
+      };
+    } else {
+      // Raw sensor reading — classify on the fly (no values returned to client)
+      const raw = allReadings[allReadings.length - 1];
+      const classified = ai.classifySensors(raw);
+      const env        = ai.scoreEnvironment({ temperature: raw.temperature, humidity: raw.humidity });
+      const gscore     = classified.gasScore;
+      iot = {
+        source:         'sensorReading',
+        gasScore:       gscore,
+        stage:          classified.stage,
+        condition:      gscore >= 80 ? 'EXCELLENT' : 'GOOD',
+        conditionLabel: gscore >= 80 ? 'EXCELLENT CONDITION' : 'GOOD CONDITION',
+        confidence:     classified.confidence,
+        environmentScore: env.environmentScore,
+        timestamp:      raw.timestamp,
+      };
+    }
+  }
+
+  /* ── Stored fusion (if already committed) ────────────────────── */
+  const storedFusion = db.find('fusion_results', (f) => f.inspectionId === inspectionId) || null;
+
+  res.json({
+    inspectionId,
+    lotId:        lot.id        || null,
+    lotNumber:    lot.lotNumber || null,
+    centralLotId: lot.centralLotId || lot.lotNumber || null,
+    hasVision:    vision !== null,
+    hasIoT:       iot    !== null,
+    vision,
+    iot,
+    storedFusion,
+    session: {
+      status:        sess.status,
+      workflowState: sess.workflowState,
+      startedAt:     sess.startedAt,
+      completedAt:   sess.completedAt,
+    },
+    lot: {
+      lotNumber:    lot.lotNumber    || null,
+      centralLotId: lot.centralLotId || lot.lotNumber || null,
+      variety:      lot.variety      || null,
+      crop:         lot.crop         || null,
+      quantityKg:   lot.quantityKg   || null,
+      farmerId:     lot.farmerId     || null,
+      fpoId:        lot.fpoId        || null,
+      procurementCenterId: lot.procurementCenterId || null,
+    },
+  });
+});
+
+/* ----------------------------------------------------------------- */
+/* FUSION — context, calculate, commit                               */
 /* ----------------------------------------------------------------- */
 
 /**

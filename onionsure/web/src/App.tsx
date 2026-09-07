@@ -96,6 +96,7 @@ export default function App() {
       <Route path="/quality/ai-analysis" element={<Dash><AIAnalysis /></Dash>} />
       <Route path="/quality/live-camera" element={<Dash><LiveCamera /></Dash>} />
       <Route path="/quality/fusion" element={<Dash><Fusion /></Dash>} />
+      <Route path="/quality/fusion/:inspectionId" element={<Dash><Fusion /></Dash>} />
       <Route path="/quality/certificates" element={<Dash><Certificates /></Dash>} />
       <Route path="/quality/qr-verify" element={<Dash><QrVerify /></Dash>} />
       <Route path="/quality/history" element={<Dash><History /></Dash>} />

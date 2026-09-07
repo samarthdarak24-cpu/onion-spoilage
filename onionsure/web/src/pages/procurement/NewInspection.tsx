@@ -101,6 +101,10 @@ export default function NewInspection() {
         mode: 'STANDARD',
       });
 
+      // Persist current inspection so Fusion Intelligence can auto-load it
+      localStorage.setItem('onionsure_current_inspection_id', inspection.id);
+      localStorage.setItem('onionsure_current_lot_id', lot.id);
+
       // Navigate to unified Quality Assessment
       nav(`/quality/assessment/${inspection.id}`);
     } catch (e: any) {

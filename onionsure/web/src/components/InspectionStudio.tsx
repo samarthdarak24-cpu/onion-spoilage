@@ -41,10 +41,13 @@ export default function InspectionStudio({
   role = 'officer',
   title = 'AI Vision Inspection',
   subtitle = 'Upload an onion photo — the OnionCheck detector scans for defects in real time.',
+  onResult,
 }: {
   role?: 'officer' | 'fpo' | 'farmer';
   title?: string;
   subtitle?: string;
+  /** Called after a real (non-demo) vision result is received, so callers can persist it. */
+  onResult?: (result: any) => void;
 }) {
   const [vision, setVision] = useState<any>(null);
   const [annotated, setAnnotated] = useState<string | null>(null);
@@ -68,6 +71,8 @@ export default function InspectionStudio({
         setSource(r.source || 'demo');
         setNote(r.note || '');
         setView('overlay');
+        // Notify caller so it can persist against current inspection
+        if (onResult && r.source !== 'demo') onResult(r);
       })
       .catch((e) => setErr(e.message))
       .finally(() => setLoading(false));
