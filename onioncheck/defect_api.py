@@ -469,176 +469,284 @@ def internal_error(e):
 
 
 # ==========================================================================
-# LIVE CAMERA ENDPOINTS
+# LIVE CAMERA  — open-on-demand, close-on-stop
 # ==========================================================================
+#
+# Design:
+#   • Camera is opened ONLY when the frontend calls /api/camera/start
+#     (or the first /api/camera/frame after a start).
+#   • Camera is RELEASED immediately when the frontend calls
+#     POST /api/camera/stop — the physical LED goes off.
+#   • A background thread grabs frames at ~30 FPS so each HTTP request
+#     just copies the latest frame (no per-request open/close latency).
+#   • YOLO/Roboflow detection is OPTIONAL per frame request.
+#     The frontend skips it on most frames (plain video) and runs it
+#     only on a slower schedule to avoid the Roboflow network timeout.
+# ==========================================================================
+
+import threading
+import time as _time
+import tempfile
+import base64 as _b64
+
+_cam_lock   = threading.Lock()   # protects _cap and _latest_frame
+_cam_thread = None               # background grab thread
+_cap        = None               # cv2.VideoCapture instance (None = closed)
+_latest_frame = None             # most recent raw numpy frame
+_cam_running  = False            # grab-loop sentinel
+
+
+def _grab_loop():
+    """Background thread: drain camera buffer continuously at ~30 FPS."""
+    global _cap, _latest_frame, _cam_running
+    while _cam_running:
+        with _cam_lock:
+            if _cap and _cap.isOpened():
+                ret, frame = _cap.read()
+                if ret and frame is not None:
+                    _latest_frame = frame
+                else:
+                    # Camera disconnected mid-stream
+                    _cam_running = False
+        _time.sleep(0.033)
+
+
+def _open_camera():
+    """
+    Open camera index 0 (or 1 as fallback), start grab thread.
+    Returns True on success.  Must be called with NO lock held.
+    """
+    global _cap, _latest_frame, _cam_running, _cam_thread
+    with _cam_lock:
+        if _cap is not None:
+            return True   # already open
+
+    # Try index 0 then 1
+    for idx in (0, 1):
+        cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+        if not cap.isOpened():
+            cap.release()
+            continue
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FPS,           30)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE,     1)
+        # Confirm we can read at least one frame
+        ok, frame = cap.read()
+        if not ok or frame is None:
+            cap.release()
+            continue
+        # Success
+        with _cam_lock:
+            _cap          = cap
+            _latest_frame = frame
+            _cam_running  = True
+        _cam_thread = threading.Thread(target=_grab_loop, daemon=True)
+        _cam_thread.start()
+        return True
+
+    return False   # no camera found
+
+
+def _close_camera():
+    """
+    Stop grab thread and release camera.  Camera LED goes off.
+    Safe to call even if camera is already closed.
+    """
+    global _cap, _latest_frame, _cam_running
+    _cam_running = False          # signal loop to exit
+    _time.sleep(0.06)             # let the loop finish its current iteration
+    with _cam_lock:
+        if _cap is not None:
+            try:
+                _cap.release()
+            except Exception:
+                pass
+            _cap = None
+        _latest_frame = None
+    print("[camera] Released — LED should be off now.")
+
+
+def _get_frame():
+    """Return a copy of the latest captured frame, or None."""
+    with _cam_lock:
+        if _latest_frame is not None:
+            return _latest_frame.copy()
+    return None
+
+
+def _camera_open():
+    """True if the camera is currently open."""
+    with _cam_lock:
+        return _cap is not None and _cap.isOpened()
+
+
+# --------------------------------------------------------------------------
+
+@app.route('/api/camera/start', methods=['POST'])
+def camera_start():
+    """
+    Open the physical camera and start the background grab thread.
+    Must be called before requesting frames.
+    """
+    try:
+        if _camera_open():
+            info = _cam_info()
+            return jsonify({
+                "success": True,
+                "message": "Camera already open",
+                "resolution": f"{info['width']}x{info['height']}",
+                "fps": info["fps"]
+            }), 200
+
+        opened = _open_camera()
+        if opened:
+            info = _cam_info()
+            return jsonify({
+                "success":    True,
+                "message":    "Camera opened successfully",
+                "resolution": f"{info['width']}x{info['height']}",
+                "fps":        info["fps"]
+            }), 200
+        else:
+            return jsonify({
+                "success": False,
+                "message": "No camera found. Connect a USB / built-in camera and try again."
+            }), 200
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/camera/stop', methods=['POST'])
+def camera_stop():
+    """
+    Release the camera and stop the grab thread.
+    The physical camera LED turns off after this call.
+    """
+    try:
+        _close_camera()
+        return jsonify({"success": True, "message": "Camera released"}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+def _cam_info():
+    with _cam_lock:
+        if _cap and _cap.isOpened():
+            return {
+                "width":  int(_cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                "height": int(_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                "fps":    int(_cap.get(cv2.CAP_PROP_FPS)) or 30,
+            }
+    return {"width": 640, "height": 480, "fps": 30}
+
 
 @app.route('/api/camera/status', methods=['GET'])
 def camera_status():
     """
-    Check if camera is available for live inspection.
-    
-    Returns:
-        {
-            "available": true/false,
-            "camera_index": 0,
-            "message": "..."
-        }
+    Report whether the camera is currently open + basic info.
+    Does NOT open or close the camera.
     """
-    cap = None
     try:
-        import time
-        start_time = time.time()
-        timeout = 5  # 5 second timeout
-        
-        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Use DirectShow on Windows
-        
-        # Wait for camera to open with timeout
-        while not cap.isOpened() and (time.time() - start_time) < timeout:
-            time.sleep(0.1)
-        
-        available = cap.isOpened()
-        
-        if available:
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            fps = int(cap.get(cv2.CAP_PROP_FPS))
-            
+        open_ = _camera_open()
+        if open_:
+            info = _cam_info()
             return jsonify({
-                "available": True,
-                "camera_index": 0,
-                "resolution": f"{width}x{height}",
-                "fps": fps if fps > 0 else 30,
-                "message": "Camera ready for live inspection"
-            })
+                "available":  True,
+                "open":       True,
+                "resolution": f"{info['width']}x{info['height']}",
+                "fps":        info["fps"],
+                "message":    "Camera is open and streaming"
+            }), 200
         else:
+            # Probe whether a camera exists without opening it permanently
+            probe = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+            exists = probe.isOpened()
+            probe.release()
             return jsonify({
-                "available": False,
-                "message": "No camera detected or camera timeout"
-            }), 404
-    
+                "available": exists,
+                "open":      False,
+                "message":   "Camera available — call /api/camera/start to open it"
+                             if exists else
+                             "No camera detected. Connect a camera and refresh."
+            }), 200
+
     except Exception as e:
-        import traceback
-        print(f"Camera status error: {e}")
-        print(traceback.format_exc())
+        import traceback; traceback.print_exc()
         return jsonify({
-            "available": False,
-            "error": str(e),
-            "message": "Camera check failed"
-        }), 500
-    
-    finally:
-        if cap:
-            try:
-                cap.release()
-            except:
-                pass
+            "available": False, "open": False,
+            "error": str(e), "message": "Camera check failed"
+        }), 200
 
 
 @app.route('/api/camera/frame', methods=['GET'])
 def get_camera_frame():
     """
-    Get single camera frame with detection (for web integration).
-    
+    Return one JPEG frame from the open camera.
+
     Query params:
-        - detect: if true, run AI detection on frame
-        - format: 'json' for base64, 'image' for direct image (default: image)
-    
-    Returns:
-        Direct image file with detections or JSON with base64
+        detect = true | false   (default false)
+                 When true, runs Roboflow YOLO on the frame — adds ~2-5 s.
+                 The frontend should call this sparingly (e.g. every 5 s)
+                 and stream plain frames in between.
+        format = image | json   (default image)
     """
-    filepath = None
-    cap = None
-    
+    if not _camera_open():
+        return jsonify({
+            "error":   "Camera is not open. Call POST /api/camera/start first.",
+            "success": False
+        }), 503
+
+    run_detection   = request.args.get('detect', 'false').lower() == 'true'
+    response_format = request.args.get('format',  'image')
+
+    frame = _get_frame()
+    if frame is None:
+        return jsonify({"error": "No frame captured yet — retry in a moment.", "success": False}), 503
+
+    detections = []
+    statistics = {}
+    tmp_path   = None
+
     try:
-        import base64
-        import time
-        
-        # Check if detection is requested
-        run_detection = request.args.get('detect', 'false').lower() == 'true'
-        response_format = request.args.get('format', 'image')
-        
-        # Capture frame with retry logic
-        max_retries = 3
-        frame = None
-        
-        for attempt in range(max_retries):
-            cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Use DirectShow on Windows for better compatibility
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            
-            if not cap.isOpened():
-                if cap:
-                    cap.release()
-                time.sleep(0.1)
-                continue
-            
-            # Wait for camera to initialize
-            time.sleep(0.05)
-            
-            # Try to read frame
-            ret, frame = cap.read()
-            cap.release()
-            
-            if ret and frame is not None:
-                break
-            
-            time.sleep(0.1)
-        
-        if frame is None:
-            return jsonify({"error": "Failed to capture frame after retries"}), 500
-        
-        # Process frame
         if run_detection:
-            # Save temporary frame
-            filepath = OUTPUT_DIR / f"temp_camera_frame_{int(time.time() * 1000)}.jpg"
-            cv2.imwrite(str(filepath), frame)
-            
-            # Run detection
-            result = detect_defects_with_sizing(
-                str(filepath),
-                confidence_threshold=0.4
-            )
-            
-            processed_frame = result["annotated_image"]
+            fd, tmp_path = tempfile.mkstemp(suffix='.jpg')
+            os.close(fd)
+            cv2.imwrite(tmp_path, frame)
+            result     = detect_defects_with_sizing(tmp_path, confidence_threshold=0.4)
+            frame      = result["annotated_image"]
             detections = result.get("detections", [])
-            statistics = result.get("statistics", {})
-        else:
-            processed_frame = frame
-            detections = []
-            statistics = {}
-        
-        # Encode frame
-        _, buffer = cv2.imencode('.jpg', processed_frame)
-        
-        # Return based on format
+            statistics = result.get("statistics",  {})
+
+        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
+        if not ret:
+            return jsonify({"error": "Frame encode failed", "success": False}), 500
+
         if response_format == 'json':
-            img_base64 = base64.b64encode(buffer).decode('utf-8')
+            img_b64 = _b64.b64encode(buffer).decode('utf-8')
             return jsonify({
-                "success": True,
-                "image": f"data:image/jpeg;base64,{img_base64}",
+                "success":    True,
+                "image":      f"data:image/jpeg;base64,{img_b64}",
                 "detections": detections,
                 "statistics": statistics,
-                "timestamp": datetime.now().isoformat()
-            })
-        else:
-            # Return image directly
-            return send_file(
-                io.BytesIO(buffer.tobytes()),
-                mimetype='image/jpeg',
-                as_attachment=False
-            )
-    
+                "timestamp":  datetime.now().isoformat()
+            }), 200
+
+        return send_file(
+            io.BytesIO(buffer.tobytes()),
+            mimetype='image/jpeg',
+            as_attachment=False
+        )
+
     except Exception as e:
-        import traceback
-        print(f"Camera frame error: {e}")
-        print(traceback.format_exc())
-        return jsonify({"error": str(e)}), 500
-    
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e), "success": False}), 500
+
     finally:
-        if cap:
-            cap.release()
-        if filepath:
-            cleanup_temp_file(filepath)
+        if tmp_path:
+            cleanup_temp_file(tmp_path)
 
 
 # ==========================================================================
@@ -654,6 +762,8 @@ if __name__ == '__main__':
     print("  POST /api/calibrate           - Calibrate size estimation")
     print("  POST /api/batch               - Batch processing")
     print("  POST /api/detect-annotated    - Get annotated image")
+    print("  POST /api/camera/start        - Open camera (LED on)")
+    print("  POST /api/camera/stop         - Release camera (LED off)")
     print("  GET  /api/camera/status       - Check camera availability")
     print("  GET  /api/camera/frame        - Get single camera frame")
     print("  GET  /api/info                - System information")
