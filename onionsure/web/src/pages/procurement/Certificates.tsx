@@ -1,11 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Award, Search, FileCheck2, Layers, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Award, Search, FileCheck2, ShieldCheck, ArrowRight, QrCode } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { api } from '../../lib/api';
-import { Card, Badge, GradeBadge, EmptyState, StatCard, ProgressBar } from '../../components/ui';
+import { GradeBadge, EmptyState, ProgressBar } from '../../components/ui';
 import { PageTransition, Stagger, StaggerItem, AnimatedNumber } from '../../components/motion';
 import { useLiveData } from '../../hooks/useLiveData';
 import { EV_CERTIFICATES } from '../../lib/events';
+import { PageHeader, StatGrid, StatTile } from '../../components/PageHeader';
 
 export default function Certificates() {
   const nav = useNavigate();
@@ -15,41 +17,34 @@ export default function Certificates() {
   );
   const [q, setQ] = React.useState('');
 
-  const certs = data || [];
+  const certs    = data || [];
   const filtered = certs.filter((c) => (c.certificateNumber + c.grade).toLowerCase().includes(q.toLowerCase()));
+  const total    = certs.length;
+  const avg      = total ? Math.round(certs.reduce((a, c) => a + (Number(c.qualityScore) || 0), 0) / total) : 0;
+  const gradeA   = certs.filter((c) => c.grade === 'GRADE A').length;
 
-  const total = certs.length;
-  const avg = total ? Math.round(certs.reduce((a, c) => a + (Number(c.qualityScore) || 0), 0) / total) : 0;
-  const gradeA = certs.filter((c) => c.grade === 'GRADE A').length;
-
-  if (loading && !data) {
-    return (
-      <PageTransition className="space-y-5">
-        <div className="h-9 w-64 animate-pulse rounded-lg bg-mint/60" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="h-24 animate-pulse rounded-2xl bg-mint/60" />)}</div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="h-44 animate-pulse rounded-2xl bg-mint/60" />)}</div>
-      </PageTransition>
-    );
-  }
+  if (loading && !data) return (
+    <PageTransition className="space-y-5">
+      <div className="h-28 animate-pulse rounded-2xl bg-mint/60" />
+      <div className="grid gap-4 sm:grid-cols-3">{[0,1,2].map(i => <div key={i} className="h-28 animate-pulse rounded-2xl bg-mint/60" />)}</div>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{[0,1,2,3,4,5].map(i => <div key={i} className="h-52 animate-pulse rounded-2xl bg-mint/60" />)}</div>
+    </PageTransition>
+  );
 
   return (
     <PageTransition className="space-y-5">
-      <div>
-        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-fresh">Quality &amp; Trust</div>
-        <h1 className="flex items-center gap-2 text-xl font-extrabold text-ink md:text-2xl"><Award size={22} className="text-fresh" /> Quality Certificates</h1>
-        <p className="mt-0.5 text-sm text-muted">Tamper-evident certificates issued for every graded lot.</p>
-      </div>
+      <PageHeader icon={<Award size={22} />} eyebrow="Quality & Trust" title="Quality Certificates" subtitle="Tamper-evident digital certificates issued for every graded lot." />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Certificates Issued" value={<AnimatedNumber value={total} />} sub="this period" accent="forest" icon={FileCheck2} />
-        <StatCard label="Average Quality" value={<><AnimatedNumber value={avg} /><span className="text-base text-muted">/100</span></>} sub="across all certs" accent="fresh" icon={Award} />
-        <StatCard label="Grade A Certs" value={<AnimatedNumber value={gradeA} />} sub="premium quality" accent="fresh" icon={ShieldCheck} />
-      </div>
+      <StatGrid cols={3}>
+        <StatTile label="Certificates" value={<AnimatedNumber value={total} />} sub="issued this period" icon={FileCheck2} accent="green" />
+        <StatTile label="Avg Quality" value={<AnimatedNumber value={avg} />} sub="across all certs" icon={Award} accent="blue" suffix="/100" />
+        <StatTile label="Grade A" value={<AnimatedNumber value={gradeA} />} sub="premium quality" icon={ShieldCheck} accent="green" />
+      </StatGrid>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <input className="input pl-9 max-w-xs" placeholder="Search certificate…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input pl-9 w-64" placeholder="Search certificate…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <span className="text-xs text-muted">{filtered.length} of {total} shown</span>
       </div>
@@ -59,55 +54,65 @@ export default function Certificates() {
       ) : (
         <Stagger className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" gap={0.05}>
           {filtered.map((c) => (
-            <StaggerItem key={c.id}>
-              <Card className="flex h-full cursor-pointer flex-col p-4 transition-shadow hover:shadow-card" onClick={() => nav(`/certificate/${c.id}`)}>
-                <div className="flex items-center justify-between">
-                  <Badge tone="forest"><Award size={12} /> {c.certificateNumber}</Badge>
+            <StaggerItem key={c.id} className="h-full">
+              <motion.div
+                whileHover={{ y: -3 }}
+                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-surface p-5 shadow-soft hover:shadow-card transition-shadow cursor-pointer"
+                onClick={() => nav(`/certificate/${c.id}`)}
+              >
+                {/* Grade stripe */}
+                <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-2xl ${c.grade === 'GRADE A' ? 'bg-forest' : c.grade === 'URS' ? 'bg-amber' : 'bg-reject'}`} />
+
+                <div className="flex items-center justify-between pt-2 mb-4">
+                  <div className="grid h-10 w-10 place-items-center rounded-xl bg-forest/10 text-forest">
+                    <Award size={18} />
+                  </div>
                   <GradeBadge grade={c.grade} />
                 </div>
 
-                <div className="mt-3 flex items-end justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted">Certificate</p>
+                <p className="font-bold text-forest font-mono text-sm mt-0.5 truncate">{c.certificateNumber}</p>
+
+                <div className="flex items-end justify-between mt-4 mb-1">
                   <div>
-                    <div className="text-xs text-muted">Quality Score</div>
-                    <div className="text-3xl font-extrabold text-ink"><AnimatedNumber value={Number(c.qualityScore) || 0} /><span className="text-base text-muted">/100</span></div>
+                    <p className="text-[10px] text-muted">Quality Score</p>
+                    <p className="text-3xl font-extrabold text-ink leading-none">
+                      <AnimatedNumber value={Number(c.qualityScore) || 0} />
+                      <span className="text-base text-muted">/100</span>
+                    </p>
                   </div>
-                  <div className="text-right text-xs text-muted">
-                    <div>A {c.grade_a_percentage}%</div><div>URS {c.urs_percentage}%</div><div>Rej {c.rejected_percentage}%</div>
+                  <div className="text-right text-xs space-y-0.5">
+                    {[
+                      { l: 'Grade A', v: c.grade_a_percentage, col: 'text-forest' },
+                      { l: 'URS',     v: c.urs_percentage,     col: 'text-amber-600' },
+                      { l: 'Rejected',v: c.rejected_percentage, col: 'text-reject' },
+                    ].map(({ l, v, col }) => (
+                      <div key={l} className="flex items-center gap-1.5 justify-end">
+                        <span className="text-muted">{l}</span>
+                        <span className={`font-bold ${col}`}>{v ?? '—'}%</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
-                <div className="mt-3 space-y-1.5">
-                  <MiniBar label="Grade A" value={Number(c.grade_a_percentage) || 0} tone="forest" />
-                  <MiniBar label="URS" value={Number(c.urs_percentage) || 0} tone="amber" />
-                  <MiniBar label="Rejected" value={Number(c.rejected_percentage) || 0} tone="reject" />
+                <div className="flex h-2 overflow-hidden rounded-full mt-3 mb-4">
+                  <div className="bg-forest" style={{ width: `${c.grade_a_percentage || 0}%` }} />
+                  <div className="bg-amber" style={{ width: `${c.urs_percentage || 0}%` }} />
+                  <div className="bg-reject" style={{ width: `${c.rejected_percentage || 0}%` }} />
                 </div>
 
-                {(c.lotNumber || c.procurementCenter) && (
-                  <div className="mt-3 flex items-center gap-1.5 border-t border-border pt-3 text-xs text-muted">
-                    <Layers size={13} className="text-fresh" />
-                    <span className="truncate">{[c.lotNumber, c.procurementCenter].filter(Boolean).join(' · ')}</span>
-                  </div>
-                )}
-
-                <div className="mt-3 flex items-center justify-between">
-                  <span className="text-xs text-muted">{new Date(c.createdAt).toLocaleString()}</span>
-                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-forest">View <ArrowRight size={13} /></span>
+                <div className="flex items-center justify-between pt-3 border-t border-border">
+                  <span className="text-xs text-muted">{new Date(c.createdAt).toLocaleDateString()}</span>
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-forest">
+                    <QrCode size={13} /> View & Verify
+                  </span>
                 </div>
-              </Card>
+              </motion.div>
             </StaggerItem>
           ))}
         </Stagger>
       )}
     </PageTransition>
-  );
-}
-
-function MiniBar({ label, value, tone }: { label: string; value: number; tone: 'forest' | 'amber' | 'reject' }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-16 shrink-0 text-[11px] text-muted">{label}</span>
-      <ProgressBar value={value} tone={tone} className="flex-1" />
-      <span className="w-9 shrink-0 text-right text-[11px] font-semibold text-ink">{value}%</span>
-    </div>
   );
 }

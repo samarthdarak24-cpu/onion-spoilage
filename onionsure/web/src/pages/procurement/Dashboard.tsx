@@ -1,266 +1,153 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ClipboardList, Clock, Award, AlertTriangle, PlusCircle, TrendingUp, Camera, ScanLine } from 'lucide-react';
+import { motion } from 'framer-motion';
+import {
+  ClipboardList, Clock, Award, AlertTriangle, PlusCircle,
+  TrendingUp, ArrowRight, BarChart3,
+} from 'lucide-react';
 import { api } from '../../lib/api';
 import { EV_DASHBOARD } from '../../lib/events';
 import { useLiveData } from '../../hooks/useLiveData';
-import { Card, Badge, GradeBadge, StatCard } from '../../components/ui';
+import { GradeBadge, RiskBadge } from '../../components/ui';
 import { Donut, TrendLine, DefectBars } from '../../components/charts';
-import { PageTransition, Stagger, StaggerItem, AnimatedNumber, SkeletonStats, Skeleton } from '../../components/motion';
+import { PageTransition, Stagger, StaggerItem, AnimatedNumber, Skeleton, SkeletonStats } from '../../components/motion';
 import { LiveIndicator } from '../../components/RealtimeStatus';
+import { PageHeader, StatGrid, StatTile } from '../../components/PageHeader';
 import type { DashboardStats } from '../../lib/types';
 
-interface Bundle {
-  stats: DashboardStats;
-  quality: any;
-  defects: Record<string, number>;
-  certs: any[];
-}
+interface Bundle { stats: DashboardStats; quality: any; defects: Record<string, number>; certs: any[] }
 
 export default function ProcDashboard() {
   const { data, error, loading } = useLiveData<Bundle>(
     async () => {
       const [stats, quality, defects, certs] = await Promise.all([
-        api.analyticsDashboard(),
-        api.analyticsQuality(),
-        api.analyticsDefects(),
-        api.getCertificates(),
+        api.analyticsDashboard(), api.analyticsQuality(), api.analyticsDefects(), api.getCertificates(),
       ]);
       return { stats, quality, defects, certs };
     },
     { events: EV_DASHBOARD, pollMs: 15000 },
   );
 
-  if (error && !data) return <div className="rounded-xl border border-reject/20 bg-reject/5 px-4 py-3 text-sm text-reject">{error}</div>;
-
-  if (loading || !data) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-8 w-64" />
-          <Skeleton className="h-9 w-36" />
-        </div>
-        <SkeletonStats count={5} />
-        <div className="grid gap-4 lg:grid-cols-3">
-          {[0, 1, 2].map((i) => <Skeleton key={i} className="h-64 w-full" />)}
-        </div>
-      </div>
-    );
-  }
+  if (error && !data) return (
+    <div className="rounded-2xl border border-reject/20 bg-reject/5 px-5 py-4 text-sm font-medium text-reject flex items-center gap-2">
+      <AlertTriangle size={16} /> {error}
+    </div>
+  );
+  if (loading || !data) return (
+    <div className="space-y-5">
+      <Skeleton className="h-32 w-full rounded-2xl" />
+      <SkeletonStats count={5} />
+      <div className="grid gap-4 lg:grid-cols-3">{[0,1,2].map(i => <Skeleton key={i} className="h-64 w-full" />)}</div>
+    </div>
+  );
 
   const { stats, quality, defects, certs } = data;
-
   const gradeData = [
-    { name: 'Grade A', value: stats.gradeALots },
-    { name: 'URS', value: stats.ursLots },
+    { name: 'Grade A',  value: stats.gradeALots },
+    { name: 'URS',      value: stats.ursLots },
     { name: 'Rejected', value: stats.rejectedLots },
   ];
-  const defectData = Object.entries(defects).map(([k, v]) => ({ name: k.charAt(0).toUpperCase() + k.slice(1), value: v }));
-  const recent = certs.slice(0, 6);
-  const totalLots = stats.gradeALots + stats.ursLots + stats.rejectedLots;
+  const defectData  = Object.entries(defects).map(([k, v]) => ({ name: k.charAt(0).toUpperCase() + k.slice(1), value: v }));
+  const trendData   = (quality.qualityTrend || []).map((t: any) => ({ day: t.day.slice(5), avg: t.avg }));
+  const recent      = certs.slice(0, 6);
+  const totalLots   = stats.gradeALots + stats.ursLots + stats.rejectedLots;
 
   return (
     <PageTransition className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-fresh">Procurement Officer</div>
-          <h1 className="truncate text-xl font-extrabold text-ink md:text-2xl">Quality Operations Dashboard</h1>
-          <p className="mt-0.5 text-sm text-muted">Live grading throughput across every lot you inspect.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <LiveIndicator />
-          <Link to="/quality/new-inspection" className="btn-primary py-2 text-sm">
-            <PlusCircle size={15} /> New Inspection
+      <PageHeader
+        icon={<BarChart3 size={21} />}
+        eyebrow="Procurement Officer"
+        title="Quality Operations"
+        subtitle="Live grading throughput across every lot you inspect."
+        badge={<LiveIndicator />}
+        actions={
+          <Link
+            to="/quality/new-inspection"
+            className="inline-flex items-center gap-2 rounded-xl bg-white/20 border border-white/30 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/30 hover:border-white/45"
+          >
+            <PlusCircle size={14} /> New Inspection
           </Link>
-        </div>
-      </div>
+        }
+      />
 
-      {/* KPI strip */}
-      <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StaggerItem className="h-full">
-          <StatCard label="Today's Inspections" value={<AnimatedNumber value={stats.todayInspections} />} sub="graded today" accent="forest" icon={ClipboardList} />
-        </StaggerItem>
-        <StaggerItem className="h-full">
-          <StatCard label="Pending" value={<AnimatedNumber value={stats.pendingInspections} />} sub="awaiting result" accent="amber" icon={Clock} />
-        </StaggerItem>
-        <StaggerItem className="h-full">
-          <StatCard label="Grade A Lots" value={<AnimatedNumber value={stats.gradeALots} />} sub="premium quality" accent="fresh" icon={Award} />
-        </StaggerItem>
-        <StaggerItem className="h-full">
-          <StatCard label="URS Lots" value={<AnimatedNumber value={stats.ursLots} />} sub="usable, reduced" accent="amber" icon={TrendingUp} />
-        </StaggerItem>
-        <StaggerItem className="h-full">
-          <StatCard label="Rejected Lots" value={<AnimatedNumber value={stats.rejectedLots} />} sub="did not pass" accent="reject" icon={AlertTriangle} />
-        </StaggerItem>
-      </Stagger>
+      {/* KPIs */}
+      <StatGrid cols={5}>
+        <StatTile label="Today"    value={<AnimatedNumber value={stats.todayInspections} />}  sub="inspections"    icon={ClipboardList} accent="green" />
+        <StatTile label="Pending"  value={<AnimatedNumber value={stats.pendingInspections} />} sub="awaiting result" icon={Clock}         accent="amber" />
+        <StatTile label="Grade A"  value={<AnimatedNumber value={stats.gradeALots} />}          sub="premium lots"   icon={Award}         accent="green" />
+        <StatTile label="URS"      value={<AnimatedNumber value={stats.ursLots} />}             sub="usable, reduced" icon={TrendingUp}    accent="amber" />
+        <StatTile label="Rejected" value={<AnimatedNumber value={stats.rejectedLots} />}        sub="did not pass"   icon={AlertTriangle} accent="red"   />
+      </StatGrid>
 
-      {/* Computer Vision Feature */}
-      <Stagger className="grid gap-4 lg:grid-cols-3" delay={0.15}>
-        <StaggerItem className="lg:col-span-2">
-          <Card className="p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="mb-1 flex items-center gap-2">
-                  <Camera className="text-forest" size={20} />
-                  <h3 className="text-base font-bold text-ink">Computer Vision Inspector</h3>
-                  <Badge tone="forest">AI-Powered</Badge>
-                </div>
-                <p className="mb-4 text-sm text-muted">
-                  Real-time onion quality detection using our trained YOLOv8 model. Get instant defect analysis with bounding boxes and confidence scores.
-                </p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Link 
-                    to="/quality/ai-analysis" 
-                    className="flex items-center justify-between rounded-lg border border-forest/20 bg-mint/30 px-4 py-3 text-sm font-semibold text-forest transition-all hover:border-forest/40 hover:bg-mint/50"
-                  >
-                    <span className="flex items-center gap-2">
-                      <ScanLine size={16} />
-                      Upload & Analyze
-                    </span>
-                    <span className="text-xs">→</span>
-                  </Link>
-                  <Link 
-                    to="/quality/live-camera" 
-                    className="flex items-center justify-between rounded-lg border border-forest/20 bg-gradient-to-r from-forest/10 to-fresh/10 px-4 py-3 text-sm font-semibold text-forest transition-all hover:border-forest/40 hover:from-forest/20 hover:to-fresh/20"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Camera size={16} />
-                      Live Camera Feed
-                    </span>
-                    <span className="text-xs">→</span>
-                  </Link>
-                </div>
-              </div>
-              <div className="hidden sm:block">
-                <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-gradient-to-br from-forest to-fresh">
-                  <ScanLine className="text-white" size={40} strokeWidth={2.5} />
-                </div>
-              </div>
-            </div>
-          </Card>
-        </StaggerItem>
-        
-        <StaggerItem>
-          <Card className="p-5">
-            <div className="mb-3 flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-forest/10">
-                <Award className="text-forest" size={16} />
-              </div>
-              <h3 className="text-sm font-bold text-ink">Model Info</h3>
-            </div>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-muted">Architecture:</span>
-                <span className="font-semibold text-ink">YOLOv8</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted">Model Source:</span>
-                <span className="font-semibold text-ink">Roboflow</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted">Detection:</span>
-                <span className="font-semibold text-forest">Real-time</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted">Classes:</span>
-                <span className="font-semibold text-ink">Multiple Defects</span>
-              </div>
-            </div>
-            <div className="mt-4 rounded-lg bg-mint/40 px-3 py-2 text-center text-[11px] font-semibold text-forest">
-              ✓ Model Active & Ready
-            </div>
-          </Card>
-        </StaggerItem>
-      </Stagger>
-
-      {/* Charts */}
+      {/* Charts row */}
       <Stagger className="grid gap-5 lg:grid-cols-3" gap={0.06}>
         <StaggerItem className="h-full">
-          <Card className="flex h-full flex-col p-4">
-            <CardTitle>Live Quality Overview</CardTitle>
+          <div className="rounded-2xl border border-[rgba(20,20,25,0.07)] bg-white p-5 shadow-soft flex flex-col h-full">
+            <p className="font-bold text-ink text-[14px] mb-3">Quality Overview</p>
             <div className="flex flex-1 items-center"><Donut data={gradeData} /></div>
-            <div className="mt-2 flex justify-center gap-3 text-[11px] text-muted">
-              <Legend color="bg-forest" label="Grade A" value={stats.gradeALots} />
-              <Legend color="bg-amber" label="URS" value={stats.ursLots} />
-              <Legend color="bg-reject" label="Rejected" value={stats.rejectedLots} />
+            <div className="mt-3 flex justify-center gap-4">
+              {[{ c: 'bg-forest', l: 'Grade A', v: stats.gradeALots }, { c: 'bg-amber', l: 'URS', v: stats.ursLots }, { c: 'bg-reject', l: 'Rejected', v: stats.rejectedLots }].map(({ c, l, v }) => (
+                <span key={l} className="flex items-center gap-1.5 text-[11px] text-muted">
+                  <i className={`h-2 w-2 rounded-full ${c}`} /> {l} <b className="text-ink font-bold">{v}</b>
+                </span>
+              ))}
             </div>
-          </Card>
+          </div>
         </StaggerItem>
-
         <StaggerItem className="h-full">
-          <Card className="flex h-full flex-col p-4">
-            <CardTitle>Quality Trend</CardTitle>
-            <div className="flex flex-1 items-center">
-              <TrendLine data={quality.qualityTrend.map((t: any) => ({ day: t.day.slice(5), avg: t.avg }))} xKey="day" yKey="avg" />
-            </div>
-          </Card>
+          <div className="rounded-2xl border border-[rgba(20,20,25,0.07)] bg-white p-5 shadow-soft flex flex-col h-full">
+            <p className="font-bold text-ink text-[14px] mb-3">Quality Trend</p>
+            <div className="flex flex-1 items-center"><TrendLine data={trendData} xKey="day" yKey="avg" /></div>
+          </div>
         </StaggerItem>
-
         <StaggerItem className="h-full">
-          <Card className="flex h-full flex-col p-4">
-            <CardTitle>Defect Distribution</CardTitle>
+          <div className="rounded-2xl border border-[rgba(20,20,25,0.07)] bg-white p-5 shadow-soft flex flex-col h-full">
+            <p className="font-bold text-ink text-[14px] mb-3">Defect Breakdown</p>
             <div className="flex flex-1 items-center"><DefectBars data={defectData} /></div>
-          </Card>
+          </div>
         </StaggerItem>
       </Stagger>
 
-      {/* Recent certificates */}
-      <Card className="p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <CardTitle className="mb-0">Recent Certificates</CardTitle>
-          <div className="flex items-center gap-3">
-            <span className="hidden text-xs text-muted sm:inline">{totalLots} lots graded</span>
-            <Link to="/quality/certificates" className="text-xs font-semibold text-forest hover:underline">View all →</Link>
+      {/* Recent certificates table */}
+      <div className="rounded-2xl border border-[rgba(20,20,25,0.07)] bg-white shadow-soft overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(20,20,25,0.07)]">
+          <div>
+            <p className="font-bold text-ink">Recent Certificates</p>
+            <p className="text-[12px] text-muted mt-0.5">{totalLots} lots graded</p>
           </div>
+          <Link to="/quality/certificates"
+            className="flex items-center gap-1 text-[12px] font-semibold text-forest hover:underline transition">
+            All certificates <ArrowRight size={12} />
+          </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>
-              <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted">
-                <th className="pb-2 pr-3 font-semibold">Certificate</th>
-                <th className="pb-2 pr-3 font-semibold">Grade</th>
-                <th className="pb-2 pr-3 font-semibold">Score</th>
-                <th className="pb-2 pr-3 font-semibold">Risk</th>
-                <th className="pb-2 font-semibold">Issued</th>
+              <tr className="bg-[rgba(20,20,25,0.02)]">
+                {['Certificate', 'Grade', 'Score', 'Risk', 'Issued'].map(h => (
+                  <th key={h} className="py-2.5 px-5 text-left text-[11px] font-bold uppercase tracking-wider text-muted">{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {recent.map((c) => (
-                <tr key={c.id} className="border-b border-border transition-colors last:border-0 hover:bg-mint/40">
-                  <td className="py-2.5 pr-3 font-medium">
-                    <Link to={`/certificate/${c.id}`} className="text-forest hover:underline">{c.certificateNumber}</Link>
+              {recent.map((c, i) => (
+                <tr key={c.id} className={`border-t border-[rgba(20,20,25,0.05)] transition hover:bg-[rgba(20,20,25,0.015)] ${i % 2 !== 0 ? 'bg-[rgba(20,20,25,0.01)]' : ''}`}>
+                  <td className="py-3 px-5">
+                    <Link to={`/certificate/${c.id}`} className="font-semibold text-forest hover:underline font-mono text-[12px]">{c.certificateNumber}</Link>
                   </td>
-                  <td className="py-2.5 pr-3"><GradeBadge grade={c.grade} /></td>
-                  <td className="py-2.5 pr-3 font-bold text-ink">{c.qualityScore}</td>
-                  <td className="py-2.5 pr-3">
-                    <Badge tone={c.riskLevel === 'HIGH' ? 'reject' : c.riskLevel === 'MEDIUM' ? 'amber' : 'forest'}>
-                      {c.riskLevel}
-                    </Badge>
-                  </td>
-                  <td className="py-2.5 text-muted">{new Date(c.createdAt).toLocaleDateString()}</td>
+                  <td className="py-3 px-5"><GradeBadge grade={c.grade} /></td>
+                  <td className="py-3 px-5 font-extrabold text-ink">{c.qualityScore}</td>
+                  <td className="py-3 px-5"><RiskBadge level={c.riskLevel || 'LOW'} /></td>
+                  <td className="py-3 px-5 text-muted text-[12px]">{new Date(c.createdAt).toLocaleDateString()}</td>
                 </tr>
               ))}
               {recent.length === 0 && (
-                <tr><td colSpan={5} className="py-6 text-center text-sm text-muted">No certificates yet — run a New Inspection to issue the first one.</td></tr>
+                <tr><td colSpan={5} className="py-12 text-center text-sm text-muted">No certificates yet — run a New Inspection to issue the first one.</td></tr>
               )}
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
     </PageTransition>
-  );
-}
-
-function CardTitle({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={`mb-2 text-[13px] font-bold text-ink ${className || ''}`}>{children}</div>;
-}
-
-function Legend({ color, label, value }: { color: string; label: string; value: number }) {
-  return (
-    <span className="flex items-center gap-1">
-      <i className={`h-2 w-2 rounded-full ${color}`} />
-      {label} <b className="text-ink">{value}</b>
-    </span>
   );
 }
