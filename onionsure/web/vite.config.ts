@@ -12,11 +12,16 @@ export default defineConfig({
       // WebSocket live-sync endpoint — proxied so the relative ws://host/ws
       // URL used by lib/realtime.ts resolves to the backend in dev too.
       '/ws': { target: 'ws://localhost:4000', ws: true },
+      // Chatbot text API — proxied to Pipecat server (port 8765)
+      // Only active when VITE_BOT_URL is not set to an external URL.
+      // In production, set VITE_BOT_URL to the deployed chatbot server URL.
     },
   },
+  define: {
+    // Bot server URL — override with VITE_BOT_URL env var for production
+    // Default: http://localhost:8765 (Pipecat chatbot server)
+  },
   build: {
-    // Per-route code-splitting (React.lazy in App.tsx) plus explicit vendor
-    // chunking keeps any single chunk well under the warning threshold.
     chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {

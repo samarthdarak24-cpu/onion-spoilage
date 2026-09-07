@@ -4,15 +4,18 @@
 
 :root {
   color-scheme: light;
-  --shadow-soft: 0 1px 2px rgba(20, 20, 25, 0.04), 0 8px 24px rgba(20, 20, 25, 0.05);
-  --shadow-card: 0 1px 2px rgba(20, 20, 25, 0.04), 0 12px 32px rgba(20, 20, 25, 0.06);
+  --shadow-soft: 0 1px 2px rgba(20,20,25,0.04), 0 8px 24px rgba(20,20,25,0.05);
+  --shadow-card: 0 1px 2px rgba(20,20,25,0.04), 0 12px 32px rgba(20,20,25,0.08);
+  --shadow-ring: 0 0 0 1px rgba(20,20,25,0.06);
+  --shadow-glow: 0 0 0 3px rgba(63,174,90,0.15), 0 8px 28px rgba(11,93,59,0.18);
+  --shadow-lift: 0 4px 6px rgba(20,20,25,0.04), 0 20px 48px rgba(20,20,25,0.10);
 }
 
 html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  background: #F7F7F5;
+  background: #EEF1EC;
   color: #17161D;
   font-family: 'Inter', 'SF Pro Display', 'Manrope', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -22,90 +25,168 @@ body {
 
 html { scroll-behavior: smooth; scroll-padding-top: 84px; }
 
-/* Cinematic film grain — sits over dark photographic plates. */
 .grain { position: relative; pointer-events: none; }
 .grain::after {
   content: '';
   position: absolute;
   inset: -60%;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
-  opacity: 0.045;
+  opacity: 0.04;
   animation: grainShift 6s steps(6) infinite;
 }
 
 @keyframes grainShift {
-  0%   { transform: translate(0, 0); }
-  20%  { transform: translate(-3%, 2%); }
-  40%  { transform: translate(2%, -3%); }
-  60%  { transform: translate(-2%, -2%); }
-  80%  { transform: translate(3%, 1%); }
-  100% { transform: translate(0, 0); }
+  0%   { transform: translate(0,0); }
+  20%  { transform: translate(-3%,2%); }
+  40%  { transform: translate(2%,-3%); }
+  60%  { transform: translate(-2%,-2%); }
+  80%  { transform: translate(3%,1%); }
+  100% { transform: translate(0,0); }
 }
 
 @layer components {
-  /* Legacy OnionSure classes (keep for backward compat) */
   .glass {
-    background: rgba(255, 255, 255, 0.55);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border: 1px solid rgba(255, 255, 255, 0.6);
+    background: rgba(255,255,255,0.65);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.70);
   }
+  .glass-premium {
+    background: rgba(255,255,255,0.75);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.80);
+  }
+
+  /* ── Core cards ── */
   .card {
-    @apply bg-surface rounded-2xl shadow-soft border border-border;
+    @apply bg-white rounded-2xl border border-[rgba(20,20,25,0.07)] shadow-soft;
   }
-  .card-legacy {
-    @apply bg-white rounded-2xl border border-emerald-50;
-    box-shadow: 0 4px 20px -8px rgba(6,69,44,0.18);
+  .card-raised {
+    @apply bg-white rounded-2xl border border-[rgba(20,20,25,0.07)];
+    box-shadow: var(--shadow-lift);
   }
+  .card-hover {
+    @apply bg-white rounded-2xl border border-[rgba(20,20,25,0.07)] shadow-soft transition-all duration-300;
+  }
+  .card-hover:hover {
+    box-shadow: var(--shadow-lift);
+    transform: translateY(-2px);
+    border-color: rgba(63,174,90,0.2);
+  }
+
+  /* ── Dark card (admin) ── */
+  .card-dark {
+    background: linear-gradient(135deg, #0f0e1a 0%, #1a1826 50%, #111019 100%);
+    color: #fff;
+    @apply rounded-xl2;
+    box-shadow: var(--shadow-card);
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+
+  /* ── Pastel cards ── */
+  .card-pastel-mint    { @apply rounded-xl2; background: linear-gradient(145deg,#D8F5E6 0%,#BDE8CC 100%); border:1px solid rgba(63,174,90,0.15); box-shadow:var(--shadow-soft); }
+  .card-pastel-peach   { @apply rounded-xl2; background: linear-gradient(145deg,#FDE8D8 0%,#F5D8C5 100%); border:1px solid rgba(244,185,66,0.15); box-shadow:var(--shadow-soft); }
+  .card-pastel-blue    { @apply rounded-xl2; background: linear-gradient(145deg,#DAEAF8 0%,#C5DAEF 100%); border:1px solid rgba(59,130,246,0.12); box-shadow:var(--shadow-soft); }
+  .card-pastel-lavender{ @apply rounded-xl2; background: linear-gradient(145deg,#E8E6F8 0%,#D8D4F0 100%); border:1px solid rgba(139,92,246,0.12); box-shadow:var(--shadow-soft); }
+
+  /* ── Gradient accent card ── */
+  .card-gradient-green {
+    background: linear-gradient(135deg, #0B5D3B 0%, #0e6b44 50%, #06452C 100%);
+    color: #fff;
+    @apply rounded-2xl;
+    box-shadow: 0 8px 32px rgba(11,93,59,0.35);
+  }
+
+  /* ── Buttons ── */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-forest text-white px-5 py-2.5 font-semibold transition hover:bg-darkgreen;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-forest text-white px-5 py-2.5 text-sm font-semibold transition-all duration-200 hover:bg-darkgreen hover:shadow-[0_4px_16px_rgba(11,93,59,0.35)] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-5 py-2.5 font-semibold text-forest transition hover:bg-emerald-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-[rgba(20,20,25,0.12)] bg-white px-5 py-2.5 text-sm font-semibold text-ink transition-all duration-200 hover:bg-bg hover:border-[rgba(20,20,25,0.2)] active:scale-[0.98];
   }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-reject text-white px-5 py-2.5 text-sm font-semibold transition-all duration-200 hover:bg-rose-700 hover:shadow-[0_4px_14px_rgba(217,83,79,0.3)] active:scale-[0.98];
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-forest/20 bg-mint/60 px-5 py-2.5 text-sm font-semibold text-forest transition-all duration-200 hover:bg-mint hover:border-forest/30;
+  }
+  .btn-icon {
+    @apply inline-flex items-center justify-center rounded-xl border border-[rgba(20,20,25,0.10)] bg-white text-muted transition-all duration-200 hover:bg-bg hover:text-ink active:scale-95;
+  }
+
+  /* ── Chip / badge ── */
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold;
   }
+
+  /* ── Form ── */
   .input {
-    @apply w-full rounded-xl border border-border bg-white px-4 py-2.5 text-sm outline-none focus:border-sb-500 focus:ring-2 focus:ring-sb-100;
+    @apply w-full rounded-xl border border-[rgba(20,20,25,0.12)] bg-white px-4 py-2.5 text-sm text-ink outline-none transition-all duration-200 focus:border-forest focus:ring-2 focus:ring-forest/10 focus:shadow-[0_0_0_3px_rgba(63,174,90,0.08)];
   }
   .label {
     @apply mb-1.5 block text-sm font-semibold text-ink;
   }
 
-  /* iBank design system */
-  .card-dark {
-    background: linear-gradient(135deg, #111019 0%, #1A1822 100%);
-    color: #fff;
-    @apply rounded-xl2;
-    box-shadow: var(--shadow-card);
+  /* ── Divider ── */
+  .divider {
+    @apply border-t border-[rgba(20,20,25,0.07)];
   }
-  .card-pastel-mint    { @apply rounded-xl2; background: linear-gradient(180deg, #DDF5E8 0%, #BFE8CF 100%); border: 1px solid rgba(20,20,25,0.04); box-shadow: var(--shadow-soft); }
-  .card-pastel-peach   { @apply rounded-xl2; background: linear-gradient(180deg, #F9E9DD 0%, #F5DCCB 100%); border: 1px solid rgba(20,20,25,0.04); box-shadow: var(--shadow-soft); }
-  .card-pastel-blue    { @apply rounded-xl2; background: linear-gradient(180deg, #E4EDF9 0%, #CFDFEF 100%); border: 1px solid rgba(20,20,25,0.04); box-shadow: var(--shadow-soft); }
-  .card-pastel-lavender{ @apply rounded-xl2; background: linear-gradient(180deg, #ECEAF8 0%, #DDD8F0 100%); border: 1px solid rgba(20,20,25,0.04); box-shadow: var(--shadow-soft); }
-  .glass-premium {
-    background: rgba(255, 255, 255, 0.60);
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-    border: 1px solid rgba(255, 255, 255, 0.65);
-  }
+
+  /* ── Scroll ── */
   .scroll-y { overflow-y: auto; scrollbar-width: thin; }
-  .scroll-y::-webkit-scrollbar { width: 8px; }
-  .scroll-y::-webkit-scrollbar-thumb { background: rgba(20,20,25,0.18); border-radius: 999px; }
+  .scroll-y::-webkit-scrollbar { width: 6px; }
+  .scroll-y::-webkit-scrollbar-thumb { background: rgba(20,20,25,0.12); border-radius: 999px; }
+
+  /* ── Stat pill ── */
+  .stat-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold;
+  }
+
+  /* ── Section heading ── */
+  .section-label {
+    @apply text-[10px] font-bold uppercase tracking-[0.22em] text-fresh;
+  }
+
+  /* ── Table ── */
+  .table-header-cell {
+    @apply py-2.5 px-4 text-left text-[11px] font-bold uppercase tracking-wider text-muted bg-bg/70;
+  }
+  .table-cell {
+    @apply py-3 px-4 text-[13px];
+  }
+  .table-row {
+    @apply border-t border-[rgba(20,20,25,0.05)] transition-colors hover:bg-sb-50/40;
+  }
 }
 
-/* Thin scrollbar */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #c8d4c2; border-radius: 8px; }
+/* Thin global scrollbar */
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-thumb { background: #b8c9b6; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
 
+/* Gradient text utility */
 .gradient-text {
-  background: linear-gradient(90deg, #0b5d3b, #3fae5a);
+  background: linear-gradient(90deg,#0b5d3b,#3fae5a);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid #3FAE5A;
+  outline-offset: 2px;
+}
+
+/* Selection */
+::selection {
+  background: rgba(63,174,90,0.2);
+  color: #06452C;
+}
+
+/* Smooth image rendering */
+img { image-rendering: -webkit-optimize-contrast; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
